@@ -80,9 +80,9 @@ with engine.connect() as conn:
             quantity INTEGER,
             price FLOAT,
             purchase_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+        )
     """))
-
+    conn.commit()
 # -----------------------------
 # SCRAPER CACHE
 # -----------------------------
