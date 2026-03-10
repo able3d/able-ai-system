@@ -3,28 +3,61 @@ from streamlit_option_menu import option_menu
 from sqlalchemy import create_engine, text
 import pandas as pd
 import plotly.express as px
-import google_reviews_scraper
 import os
+import subprocess
+
+# optional scraper import
+try:
+    import google_reviews_scraper
+    SCRAPER_AVAILABLE = True
+except:
+    SCRAPER_AVAILABLE = False
+
+# optional pipeline import
+try:
+    from run_pipeline import run_pipeline
+    PIPELINE_AVAILABLE = True
+except:
+    PIPELINE_AVAILABLE = False
+
+
+# -----------------------------
+# INSTALL PLAYWRIGHT BROWSER
+# -----------------------------
+
+def install_playwright():
+    try:
+        subprocess.run(
+            ["playwright", "install", "chromium"],
+            check=False
+        )
+    except:
+        pass
+
+install_playwright()
+
 
 # -----------------------------
 # PAGE CONFIG
 # -----------------------------
+
 st.set_page_config(
     page_title="Able AI Restaurant Intelligence",
     page_icon="🇪🇹",
     layout="wide"
 )
 
-# -----------------
-# for iphone app
-# ---------------
+
+# -----------------------------
+# IPHONE APP META
+# -----------------------------
+
 st.markdown("""
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" 
-content="black">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Abel AI">
 
-<link rel="apple-touch-icon" 
+<link rel="apple-touch-icon"
 href="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
 
 <style>
@@ -34,8 +67,9 @@ header {visibility:hidden;}
 </style>
 """, unsafe_allow_html=True)
 
+
 # -----------------------------
-# ETHIOPIAN THEME CSS
+# ETHIOPIAN THEME
 # -----------------------------
 
 st.markdown("""
@@ -54,19 +88,12 @@ background-color:#161B22;
 padding:20px;
 border-radius:12px;
 border-left:6px solid #078930;
-box-shadow:0px 0px 10px rgba(0,0,0,0.3);
-}
-
-.block-container{
-padding-top:2rem;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
-# -----------------------------
-# DATABASE
-# -----------------------------
+
 # -----------------------------
 # DATABASE
 # -----------------------------
@@ -74,6 +101,7 @@ padding-top:2rem;
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(DATABASE_URL)
+
 
 def initialize_database():
 
@@ -84,8 +112,7 @@ def initialize_database():
             id SERIAL PRIMARY KEY,
             item_name TEXT,
             quantity INTEGER,
-            price FLOAT,
-            purchase_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            price FLOAT
         )
         """))
 
@@ -94,8 +121,7 @@ def initialize_database():
             id SERIAL PRIMARY KEY,
             item_name TEXT,
             quantity INTEGER,
-            price FLOAT,
-            receipt_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            price FLOAT
         )
         """))
 
@@ -117,8 +143,20 @@ def initialize_database():
 
         conn.commit()
 
+
 initialize_database()
 
+
+# -----------------------------
+# RUN PIPELINE
+# -----------------------------
+
+if PIPELINE_AVAILABLE:
+
+    try:
+        run_pipeline()
+    except Exception as e:
+        st.warning("Pipeline error: " + str(e))
 
 
 # -----------------------------
@@ -127,10 +165,18 @@ initialize_database()
 
 @st.cache_data(ttl=3600)
 def get_competitor_data():
-    return google_reviews_scraper.scrape_google_reviews()
+
+    if not SCRAPER_AVAILABLE:
+        return {"restaurants": pd.DataFrame(), "dishes": pd.DataFrame()}
+
+    try:
+        return google_reviews_scraper.scrape_google_reviews()
+    except:
+        return {"restaurants": pd.DataFrame(), "dishes": pd.DataFrame()}
+
 
 # -----------------------------
-# LOAD DATA
+# LOAD DATA SAFELY
 # -----------------------------
 
 @st.cache_data(ttl=60)
@@ -138,40 +184,49 @@ def load_data():
 
     try:
         invoices = pd.read_sql("""
-            SELECT item_name as item, quantity, price
-            FROM purchases
+        SELECT item_name as item, quantity, price
+        FROM purchases
         """, engine)
     except:
         invoices = pd.DataFrame(columns=["item","quantity","price"])
 
     try:
         receipts = pd.read_sql("""
-            SELECT item_name as item, quantity, price
-            FROM receipts
+        SELECT item_name as item, quantity, price
+        FROM receipts
         """, engine)
     except:
         receipts = pd.DataFrame(columns=["item","quantity","price"])
 
     try:
         inventory = pd.read_sql("""
-            SELECT
-            i.ingredient_name,
-            inv.quantity,
-            i.unit
-            FROM inventory inv
-            JOIN ingredients i
-            ON inv.ingredient_id = i.ingredient_id
+        SELECT
+        i.ingredient_name,
+        inv.quantity,
+        i.unit
+        FROM inventory inv
+        JOIN ingredients i
+        ON inv.ingredient_id = i.ingredient_id
         """, engine)
     except:
         inventory = pd.DataFrame(columns=["ingredient_name","quantity","unit"])
 
     return invoices, receipts, inventory
 
+
 invoices, receipts, inventory = load_data()
 
-# calculations
-receipts["revenue"] = receipts["price"] * receipts["quantity"]
-invoices["cost"] = invoices["price"] * invoices["quantity"]
+
+# -----------------------------
+# SAFE CALCULATIONS
+# -----------------------------
+
+if not receipts.empty:
+    receipts["revenue"] = receipts["price"] * receipts["quantity"]
+
+if not invoices.empty:
+    invoices["cost"] = invoices["price"] * invoices["quantity"]
+
 
 # -----------------------------
 # METRICS
@@ -179,7 +234,12 @@ invoices["cost"] = invoices["price"] * invoices["quantity"]
 
 total_ingredients = len(inventory)
 total_purchases = len(invoices)
-low_stock = len(inventory[inventory["quantity"] < 5])
+
+if not inventory.empty:
+    low_stock = len(inventory[inventory["quantity"] < 5])
+else:
+    low_stock = 0
+
 
 # -----------------------------
 # SIDEBAR
@@ -190,23 +250,24 @@ with st.sidebar:
     selected = option_menu(
         "🇪🇹 Abel AI",
         ["Overview","Inventory","Purchases","Dish Analytics","Competitor Intelligence","AI Intelligence"],
-        
-    
-    icons=["bar-chart","box","receipt","egg-fried","geo","robot"],
+        icons=["bar-chart","box","receipt","egg-fried","geo","robot"],
         default_index=0
     )
 
+
 # -----------------------------
-# INDEX START FROM 1
+# RESET INDEX
 # -----------------------------
 
 def reset_index(df):
+
     df = df.copy()
     df.index = df.index + 1
     return df
 
+
 # -----------------------------
-# OVERVIEW TAB
+# OVERVIEW
 # -----------------------------
 
 if selected == "Overview":
@@ -227,96 +288,88 @@ if selected == "Overview":
 
         st.subheader("Top Menu Revenue")
 
-        chart = receipts.groupby("item")["revenue"].sum().sort_values()
+        if not receipts.empty:
 
-        st.bar_chart(chart)
+            chart = receipts.groupby("item")["revenue"].sum()
+
+            st.bar_chart(chart)
+
+        else:
+
+            st.info("No sales data yet")
 
     with col2:
 
         st.subheader("Supplier Spending")
 
-        chart = invoices.groupby("item")["cost"].sum().sort_values()
+        if not invoices.empty:
 
-        st.bar_chart(chart)
+            chart = invoices.groupby("item")["cost"].sum()
+
+            st.bar_chart(chart)
+
+        else:
+
+            st.info("No purchase data yet")
 
     st.divider()
 
     st.subheader("Recent Sales")
 
-    st.dataframe(reset_index(receipts.tail(10)), use_container_width=True)
+    if not receipts.empty:
 
-    st.divider()
+        st.dataframe(reset_index(receipts.tail(10)), use_container_width=True)
 
-    # -----------------------------
-    # ETHIOPIAN RESTAURANT MAP
-    # -----------------------------
+    else:
 
-    st.subheader("🌍 Ethiopian Restaurant Intelligence Map")
+        st.info("No receipts yet")
 
-    results = get_competitor_data()
-
-    restaurants = results["restaurants"]
-
-    if "lat" in restaurants.columns:
-
-        fig = px.scatter_mapbox(
-            restaurants,
-            lat="lat",
-            lon="lng",
-            hover_name="name",
-            hover_data=["rating"],
-            zoom=12,
-            height=500
-        )
-
-        fig.update_layout(mapbox_style="open-street-map")
-
-        st.plotly_chart(fig, use_container_width=True)
 
 # -----------------------------
-# INVENTORY TAB
+# INVENTORY
 # -----------------------------
 
 elif selected == "Inventory":
 
     st.title("Inventory Intelligence")
 
-    st.subheader("Ingredient Stock Levels")
+    if not inventory.empty:
 
-    fig = px.bar(
-        inventory,
-        x="ingredient_name",
-        y="quantity",
-        color="quantity"
-    )
+        fig = px.bar(
+            inventory,
+            x="ingredient_name",
+            y="quantity"
+        )
 
-    st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
 
-    st.divider()
+        st.dataframe(reset_index(inventory), use_container_width=True)
 
-    st.subheader("Inventory Table")
+    else:
 
-    st.dataframe(reset_index(inventory), use_container_width=True)
+        st.info("Inventory data not available yet")
+
 
 # -----------------------------
-# PURCHASE TAB
+# PURCHASES
 # -----------------------------
 
 elif selected == "Purchases":
 
     st.title("Supplier Purchases")
 
-    st.subheader("Purchase Volume")
+    if not invoices.empty:
 
-    chart = invoices.groupby("item")["quantity"].sum()
+        chart = invoices.groupby("item")["quantity"].sum()
 
-    st.bar_chart(chart)
+        st.bar_chart(chart)
 
-    st.divider()
+        st.dataframe(reset_index(invoices), use_container_width=True)
 
-    st.subheader("Invoices Table")
+    else:
 
-    st.dataframe(reset_index(invoices), use_container_width=True)
+        st.info("No purchases recorded")
+
 
 # -----------------------------
 # DISH ANALYTICS
@@ -326,14 +379,18 @@ elif selected == "Dish Analytics":
 
     st.title("Menu Performance")
 
-    revenue_chart = receipts.groupby("item")["revenue"].sum()
+    if not receipts.empty:
 
-    fig = px.bar(
-        revenue_chart,
-        title="Menu Revenue"
-    )
+        revenue_chart = receipts.groupby("item")["revenue"].sum()
 
-    st.plotly_chart(fig, use_container_width=True)
+        fig = px.bar(revenue_chart)
+
+        st.plotly_chart(fig)
+
+    else:
+
+        st.info("No menu sales data")
+
 
 # -----------------------------
 # COMPETITOR INTELLIGENCE
@@ -343,56 +400,38 @@ elif selected == "Competitor Intelligence":
 
     st.header("Competitor Restaurant Intelligence")
 
-    with st.spinner("Collecting Google restaurant intelligence..."):
-
-        results = get_competitor_data()
+    results = get_competitor_data()
 
     restaurants = results["restaurants"]
     dishes = results["dishes"]
 
-    st.subheader("Top Ethiopian Restaurants")
+    if not restaurants.empty:
 
-    st.dataframe(reset_index(restaurants), use_container_width=True)
+        st.dataframe(reset_index(restaurants), use_container_width=True)
 
-    st.subheader("Most Mentioned Dishes")
+    else:
 
-    st.bar_chart(dishes.set_index("dish"))
+        st.info("Competitor data unavailable")
+
 
 # -----------------------------
-# AI INTELLIGENCE
+# AI INSIGHTS
 # -----------------------------
 
 elif selected == "AI Intelligence":
 
     st.header("🤖 AI Restaurant Insights")
 
-    # AI TEXT INSIGHTS FIRST
+    if not receipts.empty:
 
-    st.subheader("Key Insights")
+        top_sales = receipts.groupby("item")["quantity"].sum().sort_values(ascending=False)
 
-    top_sales = receipts.groupby("item")["quantity"].sum().sort_values(ascending=False)
-
-    if len(top_sales) > 0:
         best_dish = top_sales.index[0]
-        st.success(f"🔥 Top Selling Dish: **{best_dish}**")
-    else:
-        st.infor("No sales data yet")
-    low_stock_items = inventory[inventory["quantity"] < 5]
 
-    if len(low_stock_items) > 0:
+        st.success(f"🔥 Top Selling Dish: {best_dish}")
 
-        st.warning("⚠ Some ingredients require reordering")
-
-        st.write(low_stock_items["ingredient_name"].tolist())
+        st.bar_chart(top_sales)
 
     else:
 
-        st.success("Inventory levels healthy")
-
-    st.divider()
-
-    # GRAPH AT BOTTOM
-
-    st.subheader("Dish Sales Intelligence")
-
-    st.bar_chart(top_sales)
+        st.info("AI insights will appear once sales data is available")
