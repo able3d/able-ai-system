@@ -4,6 +4,7 @@ from sqlalchemy import create_engine
 import pandas as pd
 import plotly.express as px
 import google_reviews_scraper
+import os
 
 # -----------------------------
 # PAGE CONFIG
@@ -67,10 +68,10 @@ padding-top:2rem;
 # DATABASE
 # -----------------------------
 
-engine = create_engine(
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+engine = create_engine(DATABASE_URL)
     
-"postgresql://postgres:postgres123@localhost:5432/inventory_ai"
-)
 
 # -----------------------------
 # SCRAPER CACHE
