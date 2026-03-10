@@ -1,0 +1,12 @@
+venv/
+build/
+dist/
+__pycache__/
+*.pyc
+.DS_Store
+*.json
+.env
+data/
+*.json
+mycreds.txt
+.env
