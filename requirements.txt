@@ -52,3 +52,15 @@ tqdm==4.67.3
 typing_extensions==4.15.0
 tzdata==2025.3
 urllib3==2.6.3
+streamlit
+pandas
+sqlalchemy
+psycopg2-binary
+plotly
+streamlit-option-menu
+pdfplumber
+google-api-python-client
+google-auth
+google-auth-httplib2
+google-auth-oauthlib
+playwright
