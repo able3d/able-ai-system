@@ -67,13 +67,19 @@ padding-top:2rem;
 # -----------------------------
 # DATABASE
 # -----------------------------
+# -----------------------------
+# DATABASE
+# -----------------------------
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(DATABASE_URL)
 
-with engine.connect() as conn:
-    conn.execute(text("""
+def initialize_database():
+
+    with engine.connect() as conn:
+
+        conn.execute(text("""
         CREATE TABLE IF NOT EXISTS purchases (
             id SERIAL PRIMARY KEY,
             item_name TEXT,
@@ -81,8 +87,40 @@ with engine.connect() as conn:
             price FLOAT,
             purchase_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    """))
-    conn.commit()
+        """))
+
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS receipts (
+            id SERIAL PRIMARY KEY,
+            item_name TEXT,
+            quantity INTEGER,
+            price FLOAT,
+            receipt_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """))
+
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS ingredients (
+            ingredient_id SERIAL PRIMARY KEY,
+            ingredient_name TEXT,
+            unit TEXT
+        )
+        """))
+
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS inventory (
+            inventory_id SERIAL PRIMARY KEY,
+            ingredient_id INTEGER,
+            quantity FLOAT
+        )
+        """))
+
+        conn.commit()
+
+initialize_database()
+
+
+
 # -----------------------------
 # SCRAPER CACHE
 # -----------------------------
@@ -98,28 +136,36 @@ def get_competitor_data():
 @st.cache_data(ttl=60)
 def load_data():
 
-    invoices = pd.read_sql("""
-        SELECT item_name as item, quantity, price
-        FROM purchases
-    """, engine)
+    try:
+        invoices = pd.read_sql("""
+            SELECT item_name as item, quantity, price
+            FROM purchases
+        """, engine)
+    except:
+        invoices = pd.DataFrame(columns=["item","quantity","price"])
 
-    receipts = pd.read_sql("""
-        SELECT item_name as item, quantity, price
-        FROM receipts
-    """, engine)
+    try:
+        receipts = pd.read_sql("""
+            SELECT item_name as item, quantity, price
+            FROM receipts
+        """, engine)
+    except:
+        receipts = pd.DataFrame(columns=["item","quantity","price"])
 
-    inventory = pd.read_sql("""
-        SELECT
-        i.ingredient_name,
-        inv.quantity,
-        i.unit
-        FROM inventory inv
-        JOIN ingredients i
-        ON inv.ingredient_id = i.ingredient_id
-    """, engine)
+    try:
+        inventory = pd.read_sql("""
+            SELECT
+            i.ingredient_name,
+            inv.quantity,
+            i.unit
+            FROM inventory inv
+            JOIN ingredients i
+            ON inv.ingredient_id = i.ingredient_id
+        """, engine)
+    except:
+        inventory = pd.DataFrame(columns=["ingredient_name","quantity","unit"])
 
     return invoices, receipts, inventory
-
 
 invoices, receipts, inventory = load_data()
 
@@ -326,10 +372,11 @@ elif selected == "AI Intelligence":
 
     top_sales = receipts.groupby("item")["quantity"].sum().sort_values(ascending=False)
 
-    best_dish = top_sales.index[0]
-
-    st.success(f"🔥 Top Selling Dish: **{best_dish}**")
-
+    if len(top_sales) > 0:
+        best_dish = top_sales.index[0]
+        st.success(f"🔥 Top Selling Dish: **{best_dish}**")
+    else:
+        st.infor("No sales data yet")
     low_stock_items = inventory[inventory["quantity"] < 5]
 
     if len(low_stock_items) > 0:
