@@ -5,6 +5,7 @@ import pandas as pd
 import plotly.express as px
 import os
 import subprocess
+from run_pipeline import run_pipeline
 
 # -----------------------------
 # PAGE CONFIG
@@ -26,6 +27,14 @@ if DATABASE_URL is None:
 
 engine = create_engine(DATABASE_URL)
 
+# --------------------------
+# run pipeline
+#------------------------
+
+try:
+    run_pipeline()
+except Exception as e:
+    print("Pipeline error:", e)
 
 # -----------------------------
 # CREATE TABLES

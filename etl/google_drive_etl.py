@@ -1,63 +1,56 @@
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
 import os
-from pydrive.auth import GoogleAuth
-from pydrive.drive import GoogleDrive
+
+SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+
+SERVICE_ACCOUNT_FILE = "service_account.json"
 
 
 def authenticate_drive():
 
-    gauth = GoogleAuth()
-    gauth.LoadCredentialsFile("mycreds.txt")
+    creds = Credentials.from_service_account_file(
+        SERVICE_ACCOUNT_FILE,
+        scopes=SCOPES
+    )
 
-    if gauth.credentials is None:
-        gauth.LocalWebserverAuth()
+    service = build("drive", "v3", credentials=creds)
 
-    elif gauth.access_token_expired:
-        gauth.Refresh()
-
-    else:
-        gauth.Authorize()
-
-    gauth.SaveCredentialsFile("mycreds.txt")
-
-    drive = GoogleDrive(gauth)
-
-    return drive
+    return service
 
 
 def download_all_files(folder_id, local_folder):
 
-    drive = authenticate_drive()
+    service = authenticate_drive()
 
     os.makedirs(local_folder, exist_ok=True)
 
-    processed_folder = local_folder.replace(
-        "receipts", "processed_receipts"
-    ).replace(
-        "invoices", "processed_invoices"
-    )
+    results = service.files().list(
+        q=f"'{folder_id}' in parents and trashed=false",
+        fields="files(id, name)"
+    ).execute()
 
-    file_list = drive.ListFile({
-        'q': f"'{folder_id}' in parents and trashed=false"
-    }).GetList()
-    print("Files found in Drive:", len(file_list))
-    for file in file_list:
-        print("Drive file detected:", file['title'])
-        file_name = file['title']
+    files = results.get("files", [])
+
+    print("Files found:", len(files))
+
+    for file in files:
+
+        file_id = file["id"]
+        file_name = file["name"]
 
         file_path = os.path.join(local_folder, file_name)
-        processed_path = os.path.join(processed_folder, file_name)
-        
-        # ----------------------------------
-        # SKIP IF FILE ALREADY PROCESSED
-        # ----------------------------------
 
-        if os.path.exists(file_path) or os.path.exists(processed_path):
+        if os.path.exists(file_path):
 
-            print("Already processed:", file_name)
+            print("Already downloaded:", file_name)
             continue
 
         print("Downloading:", file_name)
 
-        file.GetContentFile(file_path)
+        request = service.files().get_media(fileId=file_id)
+
+        with open(file_path, "wb") as f:
+            f.write(request.execute())
 
         print("Downloaded:", file_name)

@@ -2,6 +2,7 @@ import os
 import pdfplumber
 import shutil
 from sqlalchemy import create_engine, text
+imprort pandas as pd
 
 # --------------------------------------------------
 # FOLDERS
@@ -16,9 +17,33 @@ os.makedirs(PROCESSED_FOLDER, exist_ok=True)
 # DATABASE CONNECTION
 # --------------------------------------------------
 
-engine = create_engine(
-    "postgresql://postgres:postgres123@localhost:5432/inventory_ai"
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+engine = create_engine(DATABASE_URL)
+
+
+def process_receipts():
+
+    folder = "data/receipts"
+
+    for file in os.listdir(folder):
+
+        df = pd.read_csv(os.path.join(folder, file))
+
+        df.rename(columns={
+            "Item": "item_name",
+            "Quantity": "quantity",
+            "Price": "price"
+        }, inplace=True)
+
+        df.to_sql(
+            "receipts",
+            engine,
+            if_exists="append",
+            index=False
+        )
+
+        print("Inserted receipt data:", file)
 
 # --------------------------------------------------
 # EXTRACT ITEMS FROM RECEIPT TEXT
