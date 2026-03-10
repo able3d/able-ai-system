@@ -2,7 +2,7 @@ import os
 import pdfplumber
 import shutil
 from sqlalchemy import create_engine, text
-imprort pandas as pd
+import pandas as pd
 
 # --------------------------------------------------
 # FOLDERS
