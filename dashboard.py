@@ -71,7 +71,17 @@ padding-top:2rem;
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(DATABASE_URL)
-    
+
+with engine.connect() as conn:
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS purchases (
+            id SERIAL PRIMARY KEY,
+            item_name TEXT,
+            quantity INTEGER,
+            price FLOAT,
+            purchase_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """))
 
 # -----------------------------
 # SCRAPER CACHE
