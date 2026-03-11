@@ -57,10 +57,34 @@ unsafe_allow_html=True
 # DATABASE
 # -------------------------------
 
-@st.cache_resource
 
+from sqlalchemy import create_engine, text
 DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL)
+
+
+@st.cache_data
+def load_menu():
+
+    query = """
+    SELECT 
+        m.item_name,
+        SUM(s.orders) as orders,
+        SUM(s.revenue) as revenue
+    FROM menu_sales s
+    JOIN menu_items m
+    ON s.item_id = m.item_id
+    GROUP BY m.item_name
+    """
+
+    try:
+        menu = pd.read_sql(query, engine)
+    except Exception as e:
+        print("Menu table not ready:", e)
+        menu = pd.DataFrame(columns=["item_name", "orders", "revenue"])
+
+    return menu
+
 
 def ensure_tables():
 
@@ -112,29 +136,6 @@ def load_purchases():
 
     return pd.read_sql(query, engine)
 
-
-
-@st.cache_data
-def load_menu():
-
-    query = """
-    SELECT 
-        m.item_name,
-        SUM(s.orders) as orders,
-        SUM(s.revenue) as revenue
-    FROM menu_sales s
-    JOIN menu_items m
-    ON s.item_id = m.item_id
-    GROUP BY m.item_name
-    """
-
-    try:
-        menu = pd.read_sql(query, engine)
-    except Exception as e:
-        print("Menu table not ready:", e)
-        menu = pd.DataFrame(columns=["item_name", "orders", "revenue"])
-
-    return menu
 
 # -------------------------------
 # NAVIGATION
