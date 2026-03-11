@@ -4,6 +4,8 @@ import plotly.express as px
 from sqlalchemy import create_engine
 from google_reviews_scraper import scrape_google_reviews
 import os
+from sqlalchemy import create_engine, text
+
 # -------------------------------
 # PAGE CONFIG
 # -------------------------------
@@ -56,16 +58,33 @@ unsafe_allow_html=True
 # -------------------------------
 
 @st.cache_resource
-def get_connection():
 
-    DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL")
+engine = create_engine(DATABASE_URL)
 
-    engine = create_engine(DATABASE_URL)
+def ensure_tables():
 
-    return engine
+    with engine.connect() as conn:
 
-engine = get_connection()
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS menu_items (
+            item_id SERIAL PRIMARY KEY,
+            item_name TEXT
+        )
+        """))
 
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS menu_sales (
+            sale_id SERIAL PRIMARY KEY,
+            item_id INTEGER,
+            orders INTEGER,
+            revenue FLOAT
+        )
+        """))
+
+        conn.commit()
+
+ensure_tables()
 
 
 # -------------------------------
@@ -99,17 +118,23 @@ def load_purchases():
 def load_menu():
 
     query = """
-    SELECT
+    SELECT 
         m.item_name,
-        s.orders,
-        s.revenue
+        SUM(s.orders) as orders,
+        SUM(s.revenue) as revenue
     FROM menu_sales s
     JOIN menu_items m
-        ON s.item_id = m.item_id
+    ON s.item_id = m.item_id
+    GROUP BY m.item_name
     """
 
-    return pd.read_sql(query, engine)
+    try:
+        menu = pd.read_sql(query, engine)
+    except Exception as e:
+        print("Menu table not ready:", e)
+        menu = pd.DataFrame(columns=["item_name", "orders", "revenue"])
 
+    return menu
 
 # -------------------------------
 # NAVIGATION
