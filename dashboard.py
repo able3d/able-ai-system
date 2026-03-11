@@ -61,7 +61,7 @@ unsafe_allow_html=True
 from sqlalchemy import create_engine, text
 DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL)
-ensure_tables()
+
 
 @st.cache_data
 def load_menu():
@@ -153,7 +153,7 @@ def ensure_tables():
 
         conn.commit()
 
-
+ensure_tables()
 # -------------------------------
 # DATA LOADERS
 # -------------------------------
