@@ -308,29 +308,137 @@ elif selected == "Dish Analytics":
 # =========================================================
 elif selected == "Competitor Intelligence":
 
-    st.title("🌎 Competitor Intelligence")
+    import plotly.express as px
+    from google_reviews_scraper import scrape_google_reviews
 
-    st.info("Run Google review scraper to analyze market demand")
+    st.title("🌍 Competitor Intelligence")
+
+    st.caption(
+        "Market intelligence based on nearby Ethiopian restaurants"
+    )
+
+    st.divider()
 
     if st.button("Run Market Analysis"):
 
-        from google_scraper import scrape_google_reviews
+        with st.spinner("Collecting competitor data..."):
 
-        data = scrape_google_reviews()
+            data = scrape_google_reviews()
 
-        st.subheader("Restaurants")
+        restaurants = data["restaurants"]
+        dishes = data["dishes"]
 
-        st.dataframe(data["restaurants"])
+        # ------------------------------------------------
+        # COMPETITOR MAP
+        # ------------------------------------------------
 
-        st.subheader("Popular Dishes")
+        st.subheader("📍 Competitor Map")
 
-        fig = px.bar(
-            data["dishes"],
-            x="dish",
-            y="mentions"
-        )
+        if not restaurants.empty:
 
-        st.plotly_chart(fig, use_container_width=True)
+            fig = px.scatter_mapbox(
+                restaurants,
+                lat="lat",
+                lon="lon",
+                hover_name="Restaurant",
+                hover_data=["Rating"],
+                size="Rating",
+                zoom=12,
+                height=500,
+            )
+
+            fig.update_layout(mapbox_style="open-street-map")
+
+            st.plotly_chart(fig, use_container_width=True)
+
+        else:
+
+            st.warning("No competitor location data found")
+
+        st.divider()
+
+        # ------------------------------------------------
+        # DEMAND HEATMAP
+        # ------------------------------------------------
+
+        st.subheader("🔥 Ethiopian Food Demand Heatmap")
+
+        if not restaurants.empty:
+
+            heatmap = px.density_mapbox(
+                restaurants,
+                lat="lat",
+                lon="lon",
+                z="demand",
+                radius=30,
+                zoom=11,
+                height=500,
+            )
+
+            heatmap.update_layout(mapbox_style="open-street-map")
+
+            st.plotly_chart(heatmap, use_container_width=True)
+
+        else:
+
+            st.warning("No demand data available")
+
+        st.divider()
+
+        # ------------------------------------------------
+        # RESTAURANT TABLE
+        # ------------------------------------------------
+
+        st.subheader("🏪 Competitor Restaurants")
+
+        st.dataframe(restaurants, use_container_width=True)
+
+        st.divider()
+
+        # ------------------------------------------------
+        # POPULAR DISHES
+        # ------------------------------------------------
+
+        st.subheader("🍽 Popular Dishes in Reviews")
+
+        if not dishes.empty:
+
+            fig = px.bar(
+                dishes,
+                x="dish",
+                y="mentions",
+                title="Dish Mentions in Reviews",
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+
+        else:
+
+            st.info("No dish mentions detected")
+
+        st.divider()
+
+        # ------------------------------------------------
+        # AI MENU OPPORTUNITY
+        # ------------------------------------------------
+
+        st.subheader("🤖 AI Menu Opportunity")
+
+        if not dishes.empty:
+
+            top_dish = dishes.sort_values(
+                "mentions", ascending=False
+            ).iloc[0]["dish"]
+
+            st.success(
+                f"High demand detected for **{top_dish.title()}** nearby. "
+                f"Consider adding it to your menu."
+            )
+
+        else:
+
+            st.info("Not enough data for recommendations")
+
 
 # =========================================================
 # AI INSIGHTS
