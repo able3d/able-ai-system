@@ -9,7 +9,7 @@ from google_reviews_scraper import scrape_google_reviews
 # -------------------------------
 
 st.set_page_config(
-    page_title="AI Restaurant Intelligence",
+    page_title="Able AI Restaurant Intelligence",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
