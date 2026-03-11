@@ -241,7 +241,31 @@ def create_tables(engine):
         conn.commit()
 
     print("Database tables created")
+# ---------------------------
+# menu
+# --------------------
+def seed_menu():
 
+    dishes = [
+        "Doro Wat",
+        "Kitfo",
+        "Tibs",
+        "Injera Basket"
+    ]
+
+    with engine.connect() as conn:
+
+        for dish in dishes:
+
+            conn.execute(text("""
+                INSERT INTO dishes (dish_name)
+                VALUES (:dish)
+                ON CONFLICT DO NOTHING
+            """), {"dish": dish})
+
+        conn.commit()
+
+    print("Menu seeded")
 # --------------------------------------------------
 # PROCESS RECEIPTS
 # --------------------------------------------------
@@ -324,5 +348,8 @@ def process_receipts():
 # --------------------------------------------------
 
 if __name__ == "__main__":
+    print("Creating database tables...")
 
+    create_tables(engine)
+    seed_menu()
     process_receipts()
