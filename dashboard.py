@@ -19,14 +19,17 @@ st.set_page_config(
 # -----------------------------
 # DATABASE CONNECTION
 # -----------------------------
-DATABASE_URL = ("DATABASE_URL")
 
-if DATABASE_URL is None:
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
     st.error("DATABASE_URL environment variable not set")
     st.stop()
 
-engine = create_engine(DATABASE_URL)
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+engine = create_engine(DATABASE_URL)
 # --------------------------
 # run pipeline
 #------------------------
