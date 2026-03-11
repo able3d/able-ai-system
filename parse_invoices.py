@@ -93,22 +93,21 @@ def extract_items(text):
 
     lines = text.split("\n")
 
+    pattern = re.compile(
+        r"([A-Za-z\s]+)\s+(\d+)\s+\$?(\d+\.\d+)"
+    )
+
     for line in lines:
 
-        line = line.strip()
+        match = pattern.search(line)
 
-        # look for lines that contain a price
-        if not re.search(r'\d+\.\d+', line):
-            continue
-
-        # regex for supplier style lines
-        match = re.search(r'(.+?)\s+(\d+)\s+(\d+\.\d+)', line)
         if match:
 
             name = match.group(1).strip().lower()
-            name = re.sub(r"\(.*?\)", "", name).strip()
             quantity = int(match.group(2))
             price = float(match.group(3))
+
+            name = INGREDIENT_MAP.get(name, name)
 
             items.append({
                 "name": name,
@@ -116,11 +115,8 @@ def extract_items(text):
                 "price": price
             })
 
-            print("Parsed:", name, quantity, price)
-
-    print("Items found:", len(items))
-
     return items
+
 
 
 # ----------------------------------------------------
@@ -128,43 +124,38 @@ def extract_items(text):
 # ----------------------------------------------------
 def insert_purchase(item):
 
-    with engine.connect() as conn:
+    with engine.begin() as conn:
 
-        # -----------------------------------
-        # 1️⃣ INSERT PURCHASE RECORD
-        # -----------------------------------
+        # 1️⃣ Ensure ingredient exists
+        ingredient_query = text("""
+            INSERT INTO ingredients (ingredient_name, unit)
+            VALUES (:name, 'unit')
+            ON CONFLICT (ingredient_name) DO NOTHING
+        """)
 
+        conn.execute(ingredient_query, {"name": item["name"]})
+
+        # 2️⃣ Insert purchase record
         purchase_query = text("""
             INSERT INTO purchases (item_name, quantity, price)
             VALUES (:name, :quantity, :price)
         """)
 
-        conn.execute(purchase_query, {
-            "name": item["name"],
-            "quantity": item["quantity"],
-            "price": item["price"]
-        })
+        conn.execute(purchase_query, item)
 
-        # -----------------------------------
-        # 2️⃣ UPDATE INVENTORY
-        # -----------------------------------
-
+        # 3️⃣ Update inventory (UPSERT)
         inventory_query = text("""
-            UPDATE inventory
-            SET quantity = quantity + :quantity
-            WHERE ingredient_id = (
-                SELECT ingredient_id
-                FROM ingredients
-                WHERE ingredient_name = :name
-            )
+            INSERT INTO inventory (ingredient_id, quantity)
+            SELECT ingredient_id, :quantity
+            FROM ingredients
+            WHERE ingredient_name = :name
+
+            ON CONFLICT (ingredient_id)
+            DO UPDATE SET quantity = inventory.quantity + EXCLUDED.quantity
         """)
 
-        conn.execute(inventory_query, {
-            "name": item["name"],
-            "quantity": item["quantity"]
-        })
+        conn.execute(inventory_query, item)
 
-        conn.commit()
 
 
 
