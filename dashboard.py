@@ -198,7 +198,7 @@ def load_purchases():
         df.columns = df.columns.str.lower()
 
         if "item_name" in df.columns:
-            df = df.rename(columns={"item_name":"ingredient_name"})
+            df["ingredient_name"] = df["item_name"]
 
         return df
 
@@ -295,7 +295,7 @@ with tabs[2]:
 
         fig = px.bar(
             purchases,
-            x="ingredient_name",
+            x="item_name",
             y="quantity",
             title="Purchased Ingredients"
         )
