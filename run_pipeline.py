@@ -2,6 +2,8 @@ from etl.google_drive_etl import download_all_files
 import parse_invoices
 import parse_receipts
 
+print("pipeline started")
+
 def run_pipeline():
 
     print("Starting pipeline")
