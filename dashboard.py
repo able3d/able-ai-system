@@ -4,11 +4,7 @@ from sqlalchemy import create_engine, text
 import pandas as pd
 import plotly.express as px
 import os
-import subprocess
-from run_pipeline import run_pipeline
 import run_pipeline
-
-run_pipeline.run_pipeline()
 
 # -----------------------------
 # PAGE CONFIG
@@ -18,17 +14,54 @@ st.set_page_config(
     page_icon="🇪🇹",
     layout="wide"
 )
-# -----------------------------
-# run pipeline
-# ----------------------------
 
-if st.button("Run Pipeline"):
-    run_pipeline.run_pipeline()
-    st.success("Pipeline executed")
+# -----------------------------
+# MODERN STYLING
+# -----------------------------
+st.markdown("""
+<style>
+
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+
+.block-container {
+    padding-top: 1rem;
+}
+
+[data-testid="stMetricValue"] {
+    font-size: 28px;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# -----------------------------
+# TOP NAVIGATION BAR
+# -----------------------------
+selected = option_menu(
+    menu_title="🇪🇹 Able AI",
+    options=[
+        "Overview",
+        "Inventory",
+        "Purchases",
+        "Dish Analytics",
+        "Competitor Intelligence",
+        "AI Insights"
+    ],
+    icons=[
+        "bar-chart",
+        "box",
+        "cart",
+        "egg-fried",
+        "globe",
+        "robot"
+    ],
+    orientation="horizontal"
+)
+
 # -----------------------------
 # DATABASE CONNECTION
 # -----------------------------
-
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
@@ -39,10 +72,9 @@ if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 engine = create_engine(DATABASE_URL)
-# --------------------------
 
 # -----------------------------
-# CREATE TABLES
+# DATABASE TABLES
 # -----------------------------
 def initialize_database():
 
@@ -69,7 +101,7 @@ def initialize_database():
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS ingredients(
             ingredient_id SERIAL PRIMARY KEY,
-            ingredient_name TEXT,
+            ingredient_name TEXT UNIQUE,
             unit TEXT
         )
         """))
@@ -84,10 +116,10 @@ def initialize_database():
 
 initialize_database()
 
-
 # -----------------------------
-# SAFE DATA LOADER
+# LOAD DATA (CACHED FOR SPEED)
 # -----------------------------
+@st.cache_data(ttl=600)
 def load_data():
 
     try:
@@ -115,7 +147,6 @@ def load_data():
 
 purchases, receipts, inventory = load_data()
 
-
 # -----------------------------
 # DATA PROCESSING
 # -----------------------------
@@ -125,50 +156,37 @@ if not receipts.empty:
 if not purchases.empty:
     purchases["cost"] = purchases["price"] * purchases["quantity"]
 
-
 # -----------------------------
-# SIDEBAR
+# PIPELINE BUTTON
 # -----------------------------
-with st.sidebar:
+col1, col2 = st.columns([6,1])
 
-    selected = option_menu(
-        "🇪🇹 Abel AI",
-        [
-            "Overview",
-            "Inventory",
-            "Purchases",
-            "Dish Analytics",
-            "AI Insights"
-        ],
-        icons=[
-            "bar-chart",
-            "box",
-            "receipt",
-            "egg-fried",
-            "robot"
-        ],
-        default_index=0
-    )
+with col2:
+    if st.button("Run Pipeline"):
+        run_pipeline.run_pipeline()
+        st.success("Pipeline executed")
 
-
-# -----------------------------
+# =========================================================
 # OVERVIEW
-# -----------------------------
+# =========================================================
 if selected == "Overview":
 
     st.title("🇪🇹 Abel AI Restaurant Intelligence")
+    st.caption("AI-Powered Inventory, Menu Analytics & Market Intelligence")
+
+    st.divider()
 
     col1, col2, col3 = st.columns(3)
 
-    col1.metric("Ingredients", len(inventory))
-    col2.metric("Purchases", len(purchases))
+    col1.metric("📦 Ingredients", len(inventory))
+    col2.metric("🧾 Purchases", len(purchases))
 
     if not inventory.empty:
         low_stock = len(inventory[inventory["quantity"] < 5])
     else:
         low_stock = 0
 
-    col3.metric("Low Stock", low_stock)
+    col3.metric("⚠️ Low Stock", low_stock)
 
     st.divider()
 
@@ -176,31 +194,48 @@ if selected == "Overview":
 
     with col1:
 
-        st.subheader("Menu Revenue")
+        st.subheader("📊 Menu Revenue")
 
         if not receipts.empty:
-            chart = receipts.groupby("item_name")["revenue"].sum()
-            st.bar_chart(chart)
+
+            chart = receipts.groupby("item_name")["revenue"].sum().reset_index()
+
+            fig = px.bar(
+                chart,
+                x="item_name",
+                y="revenue"
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+
         else:
             st.info("No sales data")
 
     with col2:
 
-        st.subheader("Supplier Spending")
+        st.subheader("💰 Supplier Spending")
 
         if not purchases.empty:
-            chart = purchases.groupby("item_name")["cost"].sum()
-            st.bar_chart(chart)
+
+            chart = purchases.groupby("item_name")["cost"].sum().reset_index()
+
+            fig = px.bar(
+                chart,
+                x="item_name",
+                y="cost"
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+
         else:
             st.info("No purchase data")
 
-
-# -----------------------------
+# =========================================================
 # INVENTORY
-# -----------------------------
+# =========================================================
 elif selected == "Inventory":
 
-    st.title("Inventory")
+    st.title("📦 Inventory")
 
     if not inventory.empty:
 
@@ -218,53 +253,91 @@ elif selected == "Inventory":
 
         st.info("No inventory data yet")
 
-
-# -----------------------------
+# =========================================================
 # PURCHASES
-# -----------------------------
+# =========================================================
 elif selected == "Purchases":
 
-    st.title("Supplier Purchases")
+    st.title("🧾 Supplier Purchases")
 
     if not purchases.empty:
 
+        chart = purchases.groupby("item_name")["quantity"].sum().reset_index()
+
+        fig = px.bar(
+            chart,
+            x="item_name",
+            y="quantity",
+            title="Purchase Volume by Ingredient"
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
         st.dataframe(purchases)
 
-        chart = purchases.groupby("item_name")["quantity"].sum()
-
-        st.bar_chart(chart)
-
     else:
-
         st.info("No purchases recorded")
 
-
-# -----------------------------
+# =========================================================
 # DISH ANALYTICS
-# -----------------------------
+# =========================================================
 elif selected == "Dish Analytics":
 
-    st.title("Dish Analytics")
+    st.title("🍽 Dish Analytics")
 
     if not receipts.empty:
 
-        revenue_chart = receipts.groupby("item_name")["revenue"].sum()
+        df = receipts.groupby("item_name")["revenue"].sum().reset_index()
 
-        fig = px.bar(revenue_chart)
+        fig = px.bar(
+            df,
+            x="item_name",
+            y="revenue",
+            title="Revenue by Dish"
+        )
 
-        st.plotly_chart(fig)
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.dataframe(df)
 
     else:
-
         st.info("No sales data available")
 
+# =========================================================
+# COMPETITOR INTELLIGENCE
+# =========================================================
+elif selected == "Competitor Intelligence":
 
-# -----------------------------
+    st.title("🌎 Competitor Intelligence")
+
+    st.info("Run Google review scraper to analyze market demand")
+
+    if st.button("Run Market Analysis"):
+
+        from google_scraper import scrape_google_reviews
+
+        data = scrape_google_reviews()
+
+        st.subheader("Restaurants")
+
+        st.dataframe(data["restaurants"])
+
+        st.subheader("Popular Dishes")
+
+        fig = px.bar(
+            data["dishes"],
+            x="dish",
+            y="mentions"
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+# =========================================================
 # AI INSIGHTS
-# -----------------------------
+# =========================================================
 elif selected == "AI Insights":
 
-    st.title("AI Restaurant Insights")
+    st.title("🤖 AI Restaurant Insights")
 
     if not receipts.empty:
 
