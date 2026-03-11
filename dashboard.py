@@ -6,6 +6,9 @@ import plotly.express as px
 import os
 import subprocess
 from run_pipeline import run_pipeline
+import run_pipeline
+
+run_pipeline.run_pipeline()
 
 # -----------------------------
 # PAGE CONFIG
