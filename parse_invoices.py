@@ -17,10 +17,9 @@ os.makedirs(PROCESSED_FOLDER, exist_ok=True)
 # DATABASE CONNECTION
 # ----------------------------------------------------
 
-engine = create_engine(
-    "postgresql://postgres:postgres123@localhost:5432/inventory_ai"
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
 
+engine = create_engine(DATABASE_URL)
 # ----------------------------------------------------
 # EXTRACT ITEMS FROM TEXT
 # ----------------------------------------------------
