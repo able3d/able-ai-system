@@ -58,13 +58,15 @@ unsafe_allow_html=True
 @st.cache_resource
 def get_connection():
 
-    engine = create_engine(
-        "postgresql://user:password@host:5432/db"
-    )
+    DATABASE_URL = os.getenv("DATABASE_URL")
+
+    engine = create_engine(DATABASE_URL)
 
     return engine
 
 engine = get_connection()
+
+
 
 # -------------------------------
 # DATA LOADERS
