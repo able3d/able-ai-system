@@ -4,7 +4,7 @@ import time
 
 SEARCH_URL = "https://www.google.com/maps/search/ethiopian+restaurant+new+york+city"
 
-MAX_RESTAURANTS = 5
+MAX_RESTAURANTS = 3
 
 dish_keywords = [
     "injera",
@@ -21,102 +21,135 @@ dish_keywords = [
 def scrape_google_reviews():
 
     dish_counter = {dish: 0 for dish in dish_keywords}
-
     restaurants_data = []
 
-    with sync_playwright() as p:
+    try:
 
-        browser = p.chromium.launch(headless=False)
-        page = browser.new_page()
+        with sync_playwright() as p:
 
-        print("Opening Google Maps...")
-        page.goto(SEARCH_URL)
+            browser = p.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage"
+                ]
+            )
 
-        page.wait_for_selector('div[role="feed"]')
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            )
 
-        results_panel = page.locator('div[role="feed"]')
+            page = context.new_page()
 
-        # scroll to load restaurants
-        for _ in range(6):
-            results_panel.evaluate("el => el.scrollBy(0,2000)")
-            time.sleep(2)
+            print("Opening Google Maps...")
 
-        restaurants = results_panel.locator("div.Nv2PK")
+            page.goto(SEARCH_URL, timeout=60000)
 
-        total = restaurants.count()
+            page.wait_for_selector('div[role="feed"]', timeout=60000)
 
-        print("Restaurants found:", total)
+            results_panel = page.locator('div[role="feed"]')
 
-        for i in range(min(total, MAX_RESTAURANTS)):
+            # scroll results panel
+            for _ in range(6):
 
-            card = restaurants.nth(i)
-
-            try:
-                name = card.locator("a.hfpxzc").get_attribute("aria-label")
-                rating = card.locator("span.MW4etd").inner_text()
-            except:
-                continue
-
-            print("Opening:", name)
-
-            card.click()
-
-            time.sleep(5)
-
-            # open reviews tab
-            try:
-                page.get_by_role("tab", name="Reviews").click()
-                time.sleep(4)
-            except:
-                print("Reviews tab not found")
-                page.go_back()
-                time.sleep(3)
-                continue
-
-            # scroll reviews
-            for _ in range(8):
-                page.mouse.wheel(0, 5000)
+                results_panel.evaluate("el => el.scrollBy(0,2000)")
                 time.sleep(2)
 
-            reviews = page.locator("span.wiI7pd").all_inner_texts()
+            restaurants = results_panel.locator("div.Nv2PK")
 
-            print("Reviews collected:", len(reviews))
+            total = restaurants.count()
 
-            for review in reviews:
+            print("Restaurants found:", total)
 
-                text = review.lower()
+            for i in range(min(total, MAX_RESTAURANTS)):
 
-                for dish in dish_keywords:
+                card = restaurants.nth(i)
 
-                    if dish in text:
-                        dish_counter[dish] += 1
+                try:
 
-            restaurants_data.append({
-                "Restaurant": name,
-                "Rating": rating
-            })
+                    name = card.locator("a.hfpxzc").get_attribute("aria-label")
+                    rating = card.locator("span.MW4etd").inner_text()
 
-            page.go_back()
+                except:
+                    continue
 
-            time.sleep(3)
+                print("Opening:", name)
 
-        restaurants_df = pd.DataFrame(restaurants_data)
+                try:
+                    card.click()
+                except:
+                    continue
 
-        restaurants_df.index = restaurants_df.index + 1
+                time.sleep(4)
 
-        dishes_df = pd.DataFrame({
-            "dish": list(dish_counter.keys()),
-            "mentions": list(dish_counter.values())
-        })
+                # open reviews tab
+                try:
+                    page.get_by_role("tab", name="Reviews").click()
+                    time.sleep(4)
+                except:
+                    print("Reviews tab not found")
+                    page.go_back()
+                    time.sleep(3)
+                    continue
 
-        dishes_df = dishes_df.sort_values(
-            "mentions",
-            ascending=False
-        )
+                # scroll reviews
+                for _ in range(6):
 
-        browser.close()
+                    page.mouse.wheel(0, 5000)
+                    time.sleep(2)
+
+                try:
+                    reviews = page.locator("span.wiI7pd").all_inner_texts()
+                except:
+                    reviews = []
+
+                print("Reviews collected:", len(reviews))
+
+                for review in reviews:
+
+                    text = review.lower()
+
+                    for dish in dish_keywords:
+
+                        if dish in text:
+                            dish_counter[dish] += 1
+
+                restaurants_data.append({
+                    "Restaurant": name,
+                    "Rating": rating
+                })
+
+                page.go_back()
+
+                time.sleep(3)
+
+            browser.close()
+
+    except Exception as e:
+
+        print("Google scraper failed:", e)
 
         return {
-            "restaurants": restaurants_df,
-            "dishes": dishes_df
+            "restaurants": pd.DataFrame(),
+            "dishes": pd.DataFrame()
         }
+
+    restaurants_df = pd.DataFrame(restaurants_data)
+
+    if not restaurants_df.empty:
+        restaurants_df.index = restaurants_df.index + 1
+
+    dishes_df = pd.DataFrame({
+        "dish": list(dish_counter.keys()),
+        "mentions": list(dish_counter.values())
+    })
+
+    dishes_df = dishes_df.sort_values(
+        "mentions",
+        ascending=False
+    )
+
+    return {
+        "restaurants": restaurants_df,
+        "dishes": dishes_df
+    }
