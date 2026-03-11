@@ -15,7 +15,13 @@ st.set_page_config(
     page_icon="🇪🇹",
     layout="wide"
 )
+# -----------------------------
+# run pipeline
+# ----------------------------
 
+if st.button("Run Pipeline"):
+    run_pipeline.run_pipeline()
+    st.success("Pipeline executed")
 # -----------------------------
 # DATABASE CONNECTION
 # -----------------------------
@@ -31,13 +37,6 @@ if DATABASE_URL.startswith("postgres://"):
 
 engine = create_engine(DATABASE_URL)
 # --------------------------
-# run pipeline
-#------------------------
-
-try:
-    run_pipeline()
-except Exception as e:
-    print("Pipeline error:", e)
 
 # -----------------------------
 # CREATE TABLES
