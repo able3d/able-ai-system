@@ -2,9 +2,7 @@ from etl.google_drive_etl import download_all_files
 import parse_invoices
 import parse_receipts
 
-from competitor.google_reviews_scraper import scrape_google_reviews
-from database.init_db import init_db
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 import pandas as pd
 import os
 
@@ -13,6 +11,57 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL)
 
 print("Pipeline started")
+
+
+def init_db():
+    print("Initializing database...")
+
+    with engine.connect() as conn:
+
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS menu_items (
+            item_id SERIAL PRIMARY KEY,
+            item_name TEXT UNIQUE
+        )
+        """))
+
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS menu_sales (
+            sale_id SERIAL PRIMARY KEY,
+            item_id INTEGER REFERENCES menu_items(item_id),
+            orders INTEGER,
+            revenue FLOAT
+        )
+        """))
+
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS ingredients (
+            ingredient_id SERIAL PRIMARY KEY,
+            ingredient_name TEXT UNIQUE,
+            unit TEXT
+        )
+        """))
+
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS purchases (
+            purchase_id SERIAL PRIMARY KEY,
+            ingredient_name TEXT,
+            quantity FLOAT,
+            price FLOAT,
+            purchase_date DATE
+        )
+        """))
+
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS demand_heatmap (
+            item_name TEXT,
+            revenue FLOAT
+        )
+        """))
+
+        conn.commit()
+
+    print("Database ready")
 
 
 def run_pipeline():
@@ -38,34 +87,13 @@ def run_pipeline():
     print("Step 4: Parsing receipts")
     parse_receipts.process_receipts()
 
-    print("Step 5: Running competitor intelligence")
-
-    competitor_data = scrape_google_reviews()
-
-    restaurants_df = competitor_data["restaurants"]
-    dishes_df = competitor_data["dishes"]
-
-    restaurants_df.to_sql(
-        "competitor_restaurants",
-        engine,
-        if_exists="replace",
-        index=False
-    )
-
-    dishes_df.to_sql(
-        "competitor_dish_mentions",
-        engine,
-        if_exists="replace",
-        index=False
-    )
-
-    print("Step 6: Generating demand heatmap")
+    print("Step 5: Generating demand heatmap")
 
     demand_query = """
-    SELECT item_name, SUM(revenue) as revenue
+    SELECT m.item_name, SUM(s.revenue) as revenue
     FROM menu_sales s
     JOIN menu_items m ON s.item_id = m.item_id
-    GROUP BY item_name
+    GROUP BY m.item_name
     """
 
     demand_df = pd.read_sql(demand_query, engine)
