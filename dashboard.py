@@ -61,16 +61,16 @@ unsafe_allow_html=True
 from sqlalchemy import create_engine, text
 DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL)
-
+ensure_tables()
 
 @st.cache_data
 def load_menu():
 
     query = """
-    SELECT 
+    SELECT
         m.item_name,
-        SUM(s.orders) as orders,
-        SUM(s.revenue) as revenue
+        SUM(s.orders) orders,
+        SUM(s.revenue) revenue
     FROM menu_sales s
     JOIN menu_items m
     ON s.item_id = m.item_id
@@ -78,63 +78,135 @@ def load_menu():
     """
 
     try:
-        menu = pd.read_sql(query, engine)
-    except Exception as e:
-        print("Menu table not ready:", e)
-        menu = pd.DataFrame(columns=["item_name", "orders", "revenue"])
 
-    return menu
+        df = pd.read_sql(query, engine)
+
+        df.columns = df.columns.str.lower()
+
+        return df
+
+    except Exception as e:
+
+        print("Menu load failed:", e)
+
+        return pd.DataFrame(
+            columns=["item_name","orders","revenue"]
+        )
+
 
 
 def ensure_tables():
 
     with engine.connect() as conn:
 
+        # ----------------------------
+        # MENU ITEMS
+        # ----------------------------
+
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS menu_items (
             item_id SERIAL PRIMARY KEY,
-            item_name TEXT
+            item_name TEXT UNIQUE
         )
         """))
+
+        # ----------------------------
+        # MENU SALES
+        # ----------------------------
 
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS menu_sales (
             sale_id SERIAL PRIMARY KEY,
             item_id INTEGER,
-            orders INTEGER,
-            revenue FLOAT
+            orders INTEGER DEFAULT 0,
+            revenue FLOAT DEFAULT 0
+        )
+        """))
+
+        # ----------------------------
+        # INVENTORY
+        # ----------------------------
+
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS inventory (
+            ingredient_id SERIAL PRIMARY KEY,
+            ingredient_name TEXT,
+            quantity FLOAT,
+            unit TEXT
+        )
+        """))
+
+        # ----------------------------
+        # PURCHASES
+        # ----------------------------
+
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS purchases (
+            purchase_id SERIAL PRIMARY KEY,
+            ingredient_name TEXT,
+            quantity FLOAT,
+            unit TEXT,
+            price FLOAT,
+            purchase_date DATE
         )
         """))
 
         conn.commit()
-
-ensure_tables()
 
 
 # -------------------------------
 # DATA LOADERS
 # -------------------------------
 
+
 @st.cache_data
 def load_inventory():
 
-    query = """
-    SELECT
-        ingredient_name,
-        quantity,
-        unit
-    FROM inventory
-    """
+    try:
 
-    return pd.read_sql(query, engine)
+        df = pd.read_sql("SELECT * FROM inventory", engine)
+
+        # Normalize column names
+        df.columns = df.columns.str.lower()
+
+        if "ingredient" in df.columns:
+            df = df.rename(columns={"ingredient":"ingredient_name"})
+
+        if "qty" in df.columns:
+            df = df.rename(columns={"qty":"quantity"})
+
+        return df
+
+    except Exception as e:
+
+        print("Inventory load failed:", e)
+
+        return pd.DataFrame(
+            columns=["ingredient_name","quantity","unit"]
+        )
+
+
 
 
 @st.cache_data
 def load_purchases():
 
-    query = "SELECT * FROM purchases"
+    try:
 
-    return pd.read_sql(query, engine)
+        df = pd.read_sql("SELECT * FROM purchases", engine)
+
+        df.columns = df.columns.str.lower()
+
+        if "ingredient" in df.columns:
+            df = df.rename(columns={"ingredient":"ingredient_name"})
+
+        return df
+
+    except Exception as e:
+
+        print("Purchases load failed:", e)
+
+        return pd.DataFrame()
 
 
 # -------------------------------
