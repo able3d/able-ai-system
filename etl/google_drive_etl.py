@@ -1,30 +1,57 @@
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+import json
 import os
 
-SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
+SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 SERVICE_ACCOUNT_FILE = "service_account.json"
 
 
 def authenticate_drive():
 
-    # If running on Render (env variable exists)
-    if "SERVICE_ACCOUNT_JSON" in os.environ:
-        service_account_info = json.loads(os.environ["SERVICE_ACCOUNT_JSON"])
+    creds = None
+
+    # -----------------------------
+    # RUNNING ON RENDER
+    # -----------------------------
+    if os.getenv("SERVICE_ACCOUNT_JSON"):
+
+        service_account_info = json.loads(
+            os.environ["SERVICE_ACCOUNT_JSON"]
+        )
+
         creds = Credentials.from_service_account_info(
             service_account_info,
             scopes=SCOPES
         )
 
-    # If running locally (json file exists)
-    else:
+        print("Using service account from environment")
+
+    # -----------------------------
+    # RUNNING LOCALLY
+    # -----------------------------
+    elif os.path.exists(SERVICE_ACCOUNT_FILE):
+
         creds = Credentials.from_service_account_file(
             SERVICE_ACCOUNT_FILE,
             scopes=SCOPES
         )
 
-    service = build("drive", "v3", credentials=creds)
+        print("Using local service_account.json")
+
+    else:
+
+        raise Exception(
+            "No Google credentials found. "
+            "Add SERVICE_ACCOUNT_JSON to environment or provide service_account.json"
+        )
+
+    service = build(
+        "drive",
+        "v3",
+        credentials=creds
+    )
 
     return service
 
