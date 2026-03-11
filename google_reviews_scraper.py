@@ -1,155 +1,131 @@
 from playwright.sync_api import sync_playwright
 import pandas as pd
-import time
 
-SEARCH_URL = "https://www.google.com/maps/search/ethiopian+restaurant+new+york+city"
-
-MAX_RESTAURANTS = 3
-
+# Ethiopian dish keywords
 dish_keywords = [
-    "injera",
     "doro wat",
+    "injera",
     "kitfo",
     "tibs",
     "shiro",
-    "misir",
-    "vegetarian",
-    "coffee"
+    "lentil",
+    "vegetarian combo",
 ]
+
+def calculate_demand(reviews):
+
+    score = 0
+
+    for review in reviews:
+        text = review.lower()
+
+        for dish in dish_keywords:
+            if dish in text:
+                score += 1
+
+    return score
+
+
+def extract_dishes(reviews):
+
+    dish_count = {}
+
+    for review in reviews:
+
+        text = review.lower()
+
+        for dish in dish_keywords:
+
+            if dish in text:
+                dish_count[dish] = dish_count.get(dish, 0) + 1
+
+    dish_df = pd.DataFrame(
+        [{"dish": k, "mentions": v} for k, v in dish_count.items()]
+    )
+
+    return dish_df
 
 
 def scrape_google_reviews():
 
-    dish_counter = {dish: 0 for dish in dish_keywords}
     restaurants_data = []
+    all_reviews = []
 
-    try:
+    with sync_playwright() as p:
 
-        with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
 
-            browser = p.chromium.launch(
-                headless=True,
-                args=[
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage"
-                ]
-            )
+        page = browser.new_page()
 
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-            )
+        page.goto(
+            "https://www.google.com/maps/search/ethiopian+restaurant+new+york/"
+        )
 
-            page = context.new_page()
+        page.wait_for_timeout(5000)
 
-            print("Opening Google Maps...")
+        cards = page.locator("div.Nv2PK")
 
-            page.goto(SEARCH_URL, timeout=60000)
+        count = min(cards.count(), 10)
 
-            page.wait_for_selector('div[role="feed"]', timeout=60000)
+        for i in range(count):
 
-            results_panel = page.locator('div[role="feed"]')
+            card = cards.nth(i)
 
-            # scroll results panel
-            for _ in range(6):
+            try:
 
-                results_panel.evaluate("el => el.scrollBy(0,2000)")
-                time.sleep(2)
+                name = card.locator("div.qBF1Pd").inner_text()
 
-            restaurants = results_panel.locator("div.Nv2PK")
+                rating = card.locator("span.MW4etd").inner_text()
 
-            total = restaurants.count()
+                link = card.locator("a.hfpxzc").get_attribute("href")
 
-            print("Restaurants found:", total)
+                lat = None
+                lon = None
 
-            for i in range(min(total, MAX_RESTAURANTS)):
+                if link and "@" in link:
 
-                card = restaurants.nth(i)
+                    coords = link.split("@")[1].split(",")
 
-                try:
+                    lat = float(coords[0])
+                    lon = float(coords[1])
 
-                    name = card.locator("a.hfpxzc").get_attribute("aria-label")
-                    rating = card.locator("span.MW4etd").inner_text()
+                card.click()
 
-                except:
-                    continue
+                page.wait_for_timeout(3000)
 
-                print("Opening:", name)
+                reviews = []
 
-                try:
-                    card.click()
-                except:
-                    continue
+                review_elements = page.locator("span.wiI7pd")
 
-                time.sleep(4)
+                for j in range(min(review_elements.count(), 20)):
 
-                # open reviews tab
-                try:
-                    page.get_by_role("tab", name="Reviews").click()
-                    time.sleep(4)
-                except:
-                    print("Reviews tab not found")
-                    page.go_back()
-                    time.sleep(3)
-                    continue
+                    reviews.append(review_elements.nth(j).inner_text())
 
-                # scroll reviews
-                for _ in range(6):
+                demand_score = calculate_demand(reviews)
 
-                    page.mouse.wheel(0, 5000)
-                    time.sleep(2)
+                restaurants_data.append(
+                    {
+                        "Restaurant": name,
+                        "Rating": float(rating),
+                        "lat": lat,
+                        "lon": lon,
+                        "demand": demand_score,
+                    }
+                )
 
-                try:
-                    reviews = page.locator("span.wiI7pd").all_inner_texts()
-                except:
-                    reviews = []
+                all_reviews.extend(reviews)
 
-                print("Reviews collected:", len(reviews))
+            except:
+                pass
 
-                for review in reviews:
-
-                    text = review.lower()
-
-                    for dish in dish_keywords:
-
-                        if dish in text:
-                            dish_counter[dish] += 1
-
-                restaurants_data.append({
-                    "Restaurant": name,
-                    "Rating": rating
-                })
-
-                page.go_back()
-
-                time.sleep(3)
-
-            browser.close()
-
-    except Exception as e:
-
-        print("Google scraper failed:", e)
-
-        return {
-            "restaurants": pd.DataFrame(),
-            "dishes": pd.DataFrame()
-        }
+        browser.close()
 
     restaurants_df = pd.DataFrame(restaurants_data)
 
-    if not restaurants_df.empty:
-        restaurants_df.index = restaurants_df.index + 1
-
-    dishes_df = pd.DataFrame({
-        "dish": list(dish_counter.keys()),
-        "mentions": list(dish_counter.values())
-    })
-
-    dishes_df = dishes_df.sort_values(
-        "mentions",
-        ascending=False
-    )
+    dishes_df = extract_dishes(all_reviews)
 
     return {
         "restaurants": restaurants_df,
-        "dishes": dishes_df
+        "dishes": dishes_df,
     }
+
