@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 from sqlalchemy import create_engine
 from google_reviews_scraper import scrape_google_reviews
-
+import os
 # -------------------------------
 # PAGE CONFIG
 # -------------------------------
@@ -45,7 +45,7 @@ header {visibility: hidden;}
 st.markdown(
 """
 <h2 style='text-align:center;'>
-🍽 AI Restaurant Intelligence
+🍽 Able AI Restaurant Intelligence
 </h2>
 """,
 unsafe_allow_html=True
