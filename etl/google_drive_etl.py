@@ -9,10 +9,20 @@ SERVICE_ACCOUNT_FILE = "service_account.json"
 
 def authenticate_drive():
 
-    creds = Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE,
-        scopes=SCOPES
-    )
+    # If running on Render (env variable exists)
+    if "SERVICE_ACCOUNT_JSON" in os.environ:
+        service_account_info = json.loads(os.environ["SERVICE_ACCOUNT_JSON"])
+        creds = Credentials.from_service_account_info(
+            service_account_info,
+            scopes=SCOPES
+        )
+
+    # If running locally (json file exists)
+    else:
+        creds = Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE,
+            scopes=SCOPES
+        )
 
     service = build("drive", "v3", credentials=creds)
 
