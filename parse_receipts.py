@@ -22,7 +22,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL)
 
 
-def process_receipts():
+def load_csv_receipts():
 
     folder = "data/receipts"
 
@@ -49,6 +49,8 @@ def process_receipts():
 # EXTRACT ITEMS FROM RECEIPT TEXT
 # --------------------------------------------------
 
+import re
+
 def extract_items(text):
 
     items = []
@@ -57,17 +59,22 @@ def extract_items(text):
 
     for line in lines:
 
-        parts = line.split()
+        line = line.strip()
 
-        if len(parts) < 3:
+        if not line:
             continue
 
-        try:
+        # -----------------------------------
+        # Pattern 1: "2 Doro Wat 15.99"
+        # -----------------------------------
 
-            quantity = int(parts[-2])
-            price = float(parts[-1].replace("$", ""))
+        match = re.search(r"(\d+)\s+(.+?)\s+\$?(\d+\.\d{2})", line)
 
-            name = " ".join(parts[:-2])
+        if match:
+
+            quantity = int(match.group(1))
+            name = match.group(2).strip()
+            price = float(match.group(3))
 
             items.append({
                 "name": name,
@@ -75,7 +82,26 @@ def extract_items(text):
                 "price": price
             })
 
-        except:
+            continue
+
+
+        # -----------------------------------
+        # Pattern 2: "Doro Wat 15.99"
+        # -----------------------------------
+
+        match = re.search(r"(.+?)\s+\$?(\d+\.\d{2})", line)
+
+        if match:
+
+            name = match.group(1).strip()
+            price = float(match.group(2))
+
+            items.append({
+                "name": name,
+                "quantity": 1,
+                "price": price
+            })
+
             continue
 
     return items
@@ -173,6 +199,48 @@ def deduct_inventory(dish_name, quantity_sold):
 
         print("Inventory updated for", dish_name)
 
+# ------------------------
+def create_tables(engine):
+
+    with engine.connect() as conn:
+
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS dishes (
+            dish_id SERIAL PRIMARY KEY,
+            dish_name TEXT UNIQUE
+        )
+        """))
+
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS receipts (
+            receipt_id SERIAL PRIMARY KEY,
+            item_name TEXT,
+            quantity INT,
+            price FLOAT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """))
+
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS inventory (
+            ingredient_id SERIAL PRIMARY KEY,
+            ingredient_name TEXT,
+            stock_quantity FLOAT
+        )
+        """))
+
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS bom (
+            bom_id SERIAL PRIMARY KEY,
+            dish_id INT,
+            ingredient_id INT,
+            quantity_required FLOAT
+        )
+        """))
+
+        conn.commit()
+
+    print("Database tables created")
 
 # --------------------------------------------------
 # PROCESS RECEIPTS
