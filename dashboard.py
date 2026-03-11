@@ -197,8 +197,8 @@ def load_purchases():
 
         df.columns = df.columns.str.lower()
 
-        if "ingredient" in df.columns:
-            df = df.rename(columns={"ingredient":"ingredient_name"})
+        if "item_name" in df.columns:
+            df = df.rename(columns={"item_name":"ingredient_name"})
 
         return df
 
