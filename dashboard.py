@@ -19,7 +19,7 @@ st.set_page_config(
 # -----------------------------
 # DATABASE CONNECTION
 # -----------------------------
-DATABASE_URL = ("postgresql://inventory_user:kP6ZaiMG45ubYrETDfyrxjYKr6ptGiuR@dpg-d6o4mt7kijhs73a1j0s0-a.virginia-postgres.render.com/inventory_dpdo")
+DATABASE_URL = ("DATABASE_URL")
 
 if DATABASE_URL is None:
     st.error("DATABASE_URL environment variable not set")
