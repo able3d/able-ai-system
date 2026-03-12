@@ -60,7 +60,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS menu_sales (
             sale_id SERIAL PRIMARY KEY,
             item_id INTEGER REFERENCES menu_items(item_id),
-            orders INTEGER,
+             orders INTEGER,
             revenue FLOAT
         )
         """))
@@ -73,6 +73,25 @@ def init_db():
             unit TEXT,
             price FLOAT,
             purchase_date DATE
+        )
+        """))
+
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS competitors (
+        competitor_id SERIAL PRIMARY KEY,
+        restaurant_name TEXT,
+        rating FLOAT,
+        lat FLOAT,
+        lon FLOAT,
+        demand_score INT,
+        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """))
+
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS competitor_dishes (
+        dish TEXT,
+        mentions INT
         )
         """))
 
