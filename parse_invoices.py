@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, text
 # FOLDERS
 # ----------------------------------------------------
 
-INVOICE_FOLDER = "data"
+INVOICE_FOLDER = "data/invoices"
 PROCESSED_FOLDER = "data/processed_invoices"
 
 os.makedirs(PROCESSED_FOLDER, exist_ok=True)
@@ -77,10 +77,10 @@ def extract_items(text):
     items = []
     lines = text.split("\n")
 
-    pattern = re.compile(
-        r"([A-Za-z\s]+)\s+(\d+)\s+\$?(\d+\.\d+)"
-    )
 
+    pattern = re.compile(
+    r"([A-Za-z\s]+)\s+(\d+)\s+\$?(\d+\.?\d*)"
+    )
     for line in lines:
 
         match = pattern.search(line)
@@ -152,6 +152,7 @@ def insert_purchase(item):
 def process_all_invoices():
 
     print("Processing invoices...")
+    print("invoice folder path:", INVOICE_FOLDER)
 
     if not os.path.exists(INVOICE_FOLDER):
 
