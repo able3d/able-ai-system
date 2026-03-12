@@ -3,9 +3,7 @@ import pandas as pd
 import plotly.express as px
 import os
 from sqlalchemy import create_engine
-import run_pipeline
-
-
+from google_reviews_scraper import scrape_google_reviews
 
 
 # -------------------------------------------------
@@ -56,24 +54,12 @@ border:1px solid #333;
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------
-# RUN PIPELINE
-# -------------------------------------------------
-
-if "pipeline_ran" not in st.session_state:
-
-    with st.spinner("Updating restaurant data..."):
-        run_pipeline.run_pipeline()
-
-    st.session_state.pipeline_ran = True
-
-
-# -------------------------------------------------
 # DATABASE
 # -------------------------------------------------
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-
 engine = create_engine(DATABASE_URL)
+
 
 # -------------------------------------------------
 # DATA LOADERS
@@ -110,7 +96,6 @@ def load_inventory():
 
     df = pd.read_sql(query, engine)
 
-    # prevent negative display
     df["quantity"] = df["quantity"].clip(lower=0)
 
     return df
@@ -129,29 +114,28 @@ def load_purchases():
     ORDER BY quantity DESC
     """
 
-    df = pd.read_sql(query, engine)
-
-    return df
+    return pd.read_sql(query, engine)
 
 
 # -------------------------------------------------
-# COMPETITOR SCRAPER
+# GOOGLE REVIEWS SCRAPER (TOP 3 RESTAURANTS)
 # -------------------------------------------------
-    
 
+@st.cache_data(ttl=3600)
 def load_competitors():
 
-    restaurants = pd.read_sql(
-        "SELECT * FROM competitors",
-        engine
-    )
+    data = scrape_google_reviews()
 
-    dishes = pd.read_sql(
-        "SELECT * FROM competitor_dishes",
-        engine
-    )
+    restaurants = data["restaurants"].head(3)
+
+    dishes = data["dishes"].sort_values(
+        "mentions",
+        ascending=False
+    ).head(10)
 
     return restaurants, dishes
+
+
 # -------------------------------------------------
 # HEADER
 # -------------------------------------------------
@@ -182,12 +166,11 @@ with tabs[0]:
     revenue = menu["revenue"].sum()
     orders = menu["orders"].sum()
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
 
     col1.metric("Revenue", f"${revenue:,.0f}")
     col2.metric("Orders", int(orders))
-
-    st.metric("Menu Items", menu["item_name"].nunique())
+    col3.metric("Menu Items", menu["item_name"].nunique())
 
     fig = px.bar(
         menu,
@@ -196,8 +179,7 @@ with tabs[0]:
         title="Revenue by Dish"
     )
 
-    st.plotly_chart(fig, use_container_width=True, key="revenue_chart")
-
+    st.plotly_chart(fig, use_container_width=True)
 
 # =================================================
 # INVENTORY
@@ -220,7 +202,7 @@ with tabs[1]:
             title="Remaining Inventory"
         )
 
-        st.plotly_chart(fig, use_container_width=True, key="inventory_chart")
+        st.plotly_chart(fig, use_container_width=True)
 
         low_stock = inventory[inventory["quantity"] < 200]
 
@@ -229,7 +211,6 @@ with tabs[1]:
             st.error("⚠ Low Inventory Warning")
 
             st.dataframe(low_stock)
-
 
 # =================================================
 # PURCHASES
@@ -252,10 +233,9 @@ with tabs[2]:
             title="Purchased Ingredients"
         )
 
-        st.plotly_chart(fig, use_container_width=True, key="purchases_chart")
+        st.plotly_chart(fig, use_container_width=True)
 
         st.dataframe(purchases)
-
 
 # =================================================
 # MENU ANALYTICS
@@ -272,25 +252,23 @@ with tabs[3]:
         title="Most Popular Dishes"
     )
 
-    st.plotly_chart(fig, use_container_width=True, key="menu_orders")
-
+    st.plotly_chart(fig, use_container_width=True)
 
 # =================================================
 # COMPETITION INTELLIGENCE
 # =================================================
+
 with tabs[4]:
 
-    st.subheader("Nearby Ethiopian Restaurant Intelligence")
+    st.subheader("Top Ethiopian Restaurants in NYC")
 
-    restaurants, dishes = scrape_google_reviews()
+    restaurants, dishes = load_competitors()
 
     if restaurants.empty:
 
         st.info("No competitor data available")
 
     else:
-
-        st.markdown("### Competitor Ratings")
 
         fig = px.bar(
             restaurants,
@@ -305,29 +283,18 @@ with tabs[4]:
 
     if not dishes.empty:
 
-        st.markdown("### Most Mentioned Ethiopian Dishes")
+        st.subheader("Most Mentioned Dishes in Reviews")
 
         fig2 = px.bar(
             dishes,
             x="dish",
             y="mentions",
-            title="Dish Popularity From Reviews"
+            title="Dish Popularity"
         )
 
         st.plotly_chart(fig2, use_container_width=True)
 
         st.dataframe(dishes)
-
-    if not restaurants.empty:
-
-        st.markdown("### Restaurant Locations")
-
-        map_df = restaurants.rename(
-            columns={"lat": "latitude", "lon": "longitude"}
-        )
-
-        st.map(map_df)
-
 
 # =================================================
 # AI INSIGHTS
