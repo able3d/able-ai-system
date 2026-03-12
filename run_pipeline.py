@@ -16,6 +16,9 @@ from datetime import datetime, timedelta
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable not set")
+
 INVOICE_FOLDER_ID = os.getenv("INVOICE_FOLDER_ID")
 RECEIPT_FOLDER_ID = os.getenv("RECEIPT_FOLDER_ID")
 
@@ -23,7 +26,6 @@ INVOICE_FOLDER = "data/invoices"
 RECEIPT_FOLDER = "data/receipts"
 
 engine = create_engine(DATABASE_URL)
-
 
 # --------------------------------------------------
 # INIT DATABASE
