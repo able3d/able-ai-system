@@ -7,10 +7,11 @@ from sqlalchemy import create_engine, text
 import os
 
 
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")
 
-LOCAL_DATA_FOLDER = "data"
+LOCAL_DATA_FOLDER = "data/invoices"
 
 engine = create_engine(DATABASE_URL)
 
