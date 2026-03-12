@@ -103,6 +103,7 @@ def scrape_google_reviews():
 
                 demand_score = calculate_demand(reviews)
 
+                if lat and lon:
                 restaurants_data.append(
                     {
                         "Restaurant": name,
