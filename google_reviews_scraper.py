@@ -1,6 +1,9 @@
 from playwright.sync_api import sync_playwright
 import pandas as pd
 
+from sqlalchemy import create_engine, text
+import os
+
 
 # ---------------------------------------------------
 # ETHIOPIAN DISH KEYWORDS
@@ -168,3 +171,47 @@ def scrape_google_reviews():
         "restaurants": restaurants_df,
         "dishes": dishes_df,
     }
+    
+    DATABASE_URL = os.getenv("DATABASE_URL")
+engine = create_engine(DATABASE_URL)
+
+def save_competitor_data(restaurants_df, dishes_df):
+
+    with engine.begin() as conn:
+
+        conn.execute(text("DELETE FROM competitors"))
+        conn.execute(text("DELETE FROM competitor_dishes"))
+
+        for _, row in restaurants_df.iterrows():
+
+            conn.execute(text("""
+            INSERT INTO competitors
+            (restaurant_name, rating, lat, lon, demand_score)
+            VALUES
+            (:name, :rating, :lat, :lon, :demand)
+            """), {
+                "name": row["Restaurant"],
+                "rating": row["Rating"],
+                "lat": row["lat"],
+                "lon": row["lon"],
+                "demand": row["demand"]
+            })
+
+        for _, row in dishes_df.iterrows():
+
+            conn.execute(text("""
+            INSERT INTO competitor_dishes
+            (dish, mentions)
+            VALUES
+            (:dish, :mentions)
+            """), {
+                "dish": row["dish"],
+                "mentions": row["mentions"]
+            })
+
+data = scrape_google_reviews()
+
+save_competitor_data(
+    data["restaurants"],
+    data["dishes"]
+)
