@@ -1,4 +1,4 @@
-from google_drive_etl import download_all_files
+from etl.google_drive_etl import download_all_files
 from parse_invoices import parse_invoices
 from parse_receipts import parse_receipts
 
