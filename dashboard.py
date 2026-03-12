@@ -102,20 +102,17 @@ def load_menu():
 # -------------------------------------------------
 # INVENTORY (PURCHASE - USAGE)
 # -------------------------------------------------
-
-@st.cache_data
+@st.cache_data(ttl=30)
 def load_inventory():
 
     query = """
     SELECT
-        p.ingredient_name,
-        SUM(p.quantity) purchased,
-        COALESCE(u.quantity_used,0) used,
-        SUM(p.quantity) - COALESCE(u.quantity_used,0) remaining
-    FROM purchases p
-    LEFT JOIN inventory_usage u
-    ON p.ingredient_name = u.ingredient_name
-    GROUP BY p.ingredient_name, u.quantity_used
+        i.ingredient_name,
+        inv.quantity AS remaining,
+        i.unit
+    FROM inventory inv
+    JOIN ingredients i
+    ON inv.ingredient_id = i.ingredient_id
     """
 
     try:
@@ -123,12 +120,11 @@ def load_inventory():
         df.columns = df.columns.str.lower()
         return df
 
-    except:
+    except Exception as e:
+        print("Inventory load error:", e)
         return pd.DataFrame(
-            columns=["ingredient_name","purchased","used","remaining"]
+            columns=["ingredient_name","remaining","unit"]
         )
-
-
 @st.cache_data
 def load_purchases():
 
