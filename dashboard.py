@@ -5,7 +5,7 @@ import os
 from sqlalchemy import create_engine
 import run_pipeline
 
-from google_reviews_scraper import scrape_google_reviews
+
 
 
 # -------------------------------------------------
@@ -138,7 +138,7 @@ def load_purchases():
 # COMPETITOR SCRAPER
 # -------------------------------------------------
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=600)
 
 def load_competitors():
 
@@ -153,6 +153,8 @@ def load_competitors():
     )
 
     return restaurants, dishes
+    
+
 # -------------------------------------------------
 # HEADER
 # -------------------------------------------------
