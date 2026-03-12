@@ -69,7 +69,7 @@ if "pipeline_ran" not in st.session_state:
 
     with st.spinner("Updating restaurant data..."):
 
-        run_pipeline()
+        run_pipeline.run_pipeline()
 
     st.session_state["pipeline_ran"] = True
 
