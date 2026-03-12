@@ -139,22 +139,20 @@ def load_purchases():
 # -------------------------------------------------
 
 @st.cache_data(ttl=3600)
+
 def load_competitors():
 
-    try:
+    restaurants = pd.read_sql(
+        "SELECT * FROM competitors",
+        engine
+    )
 
-        data = scrape_google_reviews()
+    dishes = pd.read_sql(
+        "SELECT * FROM competitor_dishes",
+        engine
+    )
 
-        restaurants = data["restaurants"]
-        dishes = data["dishes"]
-
-        return restaurants, dishes
-
-    except:
-
-        return pd.DataFrame(), pd.DataFrame()
-
-
+    return restaurants, dishes
 # -------------------------------------------------
 # HEADER
 # -------------------------------------------------
