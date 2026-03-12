@@ -1,5 +1,4 @@
 from etl.google_drive_etl import download_all_files
-
 from parse_invoices import process_all_invoices
 from parse_receipts import process_all_receipts
 
@@ -7,11 +6,13 @@ from sqlalchemy import create_engine, text
 import os
 
 
-
 DATABASE_URL = os.getenv("DATABASE_URL")
-DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")
 
-LOCAL_DATA_FOLDER = "data/invoices"
+INVOICE_FOLDER_ID = os.getenv("INVOICE_FOLDER_ID")
+RECEIPT_FOLDER_ID = os.getenv("RECEIPT_FOLDER_ID")
+
+INVOICE_FOLDER = "data/invoices"
+RECEIPT_FOLDER = "data/receipts"
 
 engine = create_engine(DATABASE_URL)
 
@@ -84,27 +85,51 @@ def init_db():
 
 def run_drive_etl():
 
-    if not DRIVE_FOLDER_ID:
+    print("Running Google Drive ETL...")
 
-        print("No Google Drive folder configured")
-        return
+    os.makedirs(INVOICE_FOLDER, exist_ok=True)
+    os.makedirs(RECEIPT_FOLDER, exist_ok=True)
+
+    # -----------------------
+    # DOWNLOAD INVOICES
+    # -----------------------
+
+    if INVOICE_FOLDER_ID:
+
+        print("Downloading invoices...")
+
+        download_all_files(
+            INVOICE_FOLDER_ID,
+            INVOICE_FOLDER
+        )
+
+        print("Processing invoices...")
+        process_all_invoices()
+
+    else:
+
+        print("INVOICE_FOLDER_ID not configured")
 
 
-    print("Downloading files from Google Drive...")
+    # -----------------------
+    # DOWNLOAD RECEIPTS
+    # -----------------------
 
-    download_all_files(
-        DRIVE_FOLDER_ID,
-        LOCAL_DATA_FOLDER
-    )
+    if RECEIPT_FOLDER_ID:
 
+        print("Downloading receipts...")
 
-    print("Processing invoices...")
-    process_all_invoices()
+        download_all_files(
+            RECEIPT_FOLDER_ID,
+            RECEIPT_FOLDER
+        )
 
+        print("Processing receipts...")
+        process_all_receipts()
 
-    print("Processing receipts...")
-    process_all_receipts()
+    else:
 
+        print("RECEIPT_FOLDER_ID not configured")
 
 
 # --------------------------------------------------
@@ -149,14 +174,10 @@ def run_pipeline():
     print("Initializing database...")
     init_db()
 
-
-    print("Running Google Drive ETL...")
     run_drive_etl()
-
 
     print("Updating inventory usage...")
     deduct_inventory()
-
 
     print("Pipeline completed successfully.")
 
