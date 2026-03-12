@@ -57,8 +57,7 @@ def extract_dishes(reviews):
 
 
 # ---------------------------------------------------
-# FAST GOOGLE MAPS SCRAPER
-# ---------------------------------------------------
+# FAST GOOGLE 
 
 def scrape_google_reviews():
 
@@ -74,10 +73,15 @@ def scrape_google_reviews():
             "https://www.google.com/maps/search/ethiopian+restaurant+new+york/"
         )
 
-        # wait for restaurant cards
-        page.wait_for_selector("div.Nv2PK")
+        page.wait_for_selector("div[role='article']")
 
-        cards = page.locator("div.Nv2PK")
+        # scroll to load more restaurants
+        for _ in range(5):
+
+            page.mouse.wheel(0, 2000)
+            page.wait_for_timeout(1000)
+
+        cards = page.locator("div[role='article']")
 
         count = min(cards.count(), 5)
 
@@ -103,7 +107,7 @@ def scrape_google_reviews():
                     lat = float(coords[0])
                     lon = float(coords[1])
 
-                if lat is not None and lon is not None:
+                if lat and lon:
 
                     restaurants_data.append({
                         "Restaurant": name,
@@ -121,20 +125,19 @@ def scrape_google_reviews():
 
     restaurants_df = pd.DataFrame(restaurants_data)
 
-    # ensure no null coordinates
     if not restaurants_df.empty:
 
         restaurants_df = restaurants_df.dropna(
             subset=["lat", "lon"]
         )
 
-    # empty dish dataframe (fast mode)
     dishes_df = pd.DataFrame(columns=["dish", "mentions"])
 
     return {
         "restaurants": restaurants_df,
         "dishes": dishes_df
     }
+
 
 
 # ---------------------------------------------------
