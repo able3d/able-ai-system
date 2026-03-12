@@ -66,7 +66,9 @@ from sqlalchemy import create_engine, text
 DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL)
 
-
+st.write(pd.read_sql("SELECT * FROM menu_items", engine))
+st.write(pd.read_sql("SELECT * FROM menu_sales", engine))
+st.write(pd.read_sql("SELECT * FROM purchases", engine))
 @st.cache_data
 def load_menu():
 
