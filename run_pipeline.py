@@ -62,13 +62,69 @@ def init_db():
         conn.commit()
 
     print("Database ready")
+def seed_data():
 
+    print("Seeding initial restaurant data...")
+
+    with engine.connect() as conn:
+
+        # Menu items
+        conn.execute(text("""
+        INSERT INTO menu_items (item_name)
+        VALUES
+        ('Doro Wat'),
+        ('Kitfo'),
+        ('Shiro'),
+        ('Tibs'),
+        ('Veggie Combo')
+        ON CONFLICT (item_name) DO NOTHING
+        """))
+
+        # Ingredients
+        conn.execute(text("""
+        INSERT INTO ingredients (ingredient_name, unit)
+        VALUES
+        ('chicken','g'),
+        ('beef','g'),
+        ('lentils','g'),
+        ('onion','g'),
+        ('berbere','g'),
+        ('butter','g'),
+        ('injera','pcs')
+        ON CONFLICT (ingredient_name) DO NOTHING
+        """))
+
+        # Purchases (inventory)
+        conn.execute(text("""
+        INSERT INTO purchases (ingredient_name, quantity, price, purchase_date)
+        VALUES
+        ('chicken',5000,45,'2026-03-01'),
+        ('beef',3000,50,'2026-03-01'),
+        ('lentils',4000,20,'2026-03-01'),
+        ('onion',2000,10,'2026-03-01'),
+        ('berbere',1000,15,'2026-03-01'),
+        ('butter',500,12,'2026-03-01')
+        """))
+
+        # Example sales
+        conn.execute(text("""
+        INSERT INTO menu_sales (item_id, orders, revenue)
+        SELECT item_id, 10, 200
+        FROM menu_items
+        ON CONFLICT DO NOTHING
+        """))
+
+        conn.commit()
+
+    print("Seed data added")
 
 def run_pipeline():
 
     print("Step 1: Initialize database")
     init_db()
 
+    print("Step 1.5: Seed starter data")
+    seed_data()
     print("Step 2: Downloading Google Drive files")
 
     download_all_files(
