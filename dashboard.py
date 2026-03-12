@@ -323,12 +323,15 @@ with tabs[4]:
 
         st.markdown("### Restaurant Locations")
 
+
         map_df = restaurants.rename(
             columns={
                 "lat": "latitude",
                 "lon": "longitude"
             }
         )
+
+        map_df = map_df.dropna(subset=["latitude", "longitude"])
 
         st.map(map_df)
 
