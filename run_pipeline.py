@@ -1,9 +1,11 @@
 from etl.google_drive_etl import download_all_files
-import parse_invoices
-import parse_receipts
+
+from parse_invoices import process_all_invoices
+from parse_receipts import process_all_receipts
 
 from sqlalchemy import create_engine, text
 import os
+
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")
@@ -82,8 +84,10 @@ def init_db():
 def run_drive_etl():
 
     if not DRIVE_FOLDER_ID:
+
         print("No Google Drive folder configured")
         return
+
 
     print("Downloading files from Google Drive...")
 
@@ -92,11 +96,14 @@ def run_drive_etl():
         LOCAL_DATA_FOLDER
     )
 
-    print("Parsing invoices...")
-    parse_invoices(LOCAL_DATA_FOLDER, engine)
 
-    print("Parsing receipts...")
-    parse_receipts(LOCAL_DATA_FOLDER, engine)
+    print("Processing invoices...")
+    process_all_invoices()
+
+
+    print("Processing receipts...")
+    process_all_receipts()
+
 
 
 # --------------------------------------------------
@@ -108,18 +115,25 @@ def deduct_inventory():
     with engine.connect() as conn:
 
         conn.execute(text("""
+
         UPDATE inventory
         SET quantity = quantity - usage.total_used
+
         FROM (
             SELECT
                 b.ingredient_id,
                 SUM(b.quantity * s.orders) AS total_used
+
             FROM dish_bom b
             JOIN menu_sales s
             ON b.item_id = s.item_id
+
             GROUP BY b.ingredient_id
+
         ) usage
+
         WHERE inventory.ingredient_id = usage.ingredient_id
+
         """))
 
         conn.commit()
@@ -134,10 +148,17 @@ def run_pipeline():
     print("Initializing database...")
     init_db()
 
+
     print("Running Google Drive ETL...")
     run_drive_etl()
+
 
     print("Updating inventory usage...")
     deduct_inventory()
 
+
     print("Pipeline completed successfully.")
+
+
+if __name__ == "__main__":
+    run_pipeline()
