@@ -121,20 +121,15 @@ def load_purchases():
 # GOOGLE REVIEWS SCRAPER (TOP 3 RESTAURANTS)
 # -------------------------------------------------
 
+
 @st.cache_data(ttl=3600)
 def load_competitors():
 
+    from google_reviews_scraper import scrape_google_reviews
+
     data = scrape_google_reviews()
 
-    restaurants = data["restaurants"].head(3)
-
-    dishes = data["dishes"].sort_values(
-        "mentions",
-        ascending=False
-    ).head(10)
-
-    return restaurants, dishes
-
+    return data["restaurants"], data["dishes"]
 
 # -------------------------------------------------
 # HEADER
