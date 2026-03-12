@@ -20,11 +20,14 @@ os.makedirs(PROCESSED_FOLDER, exist_ok=True)
 DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL)
 
+
 # ----------------------------------------------------
 # INGREDIENT NAME MAPPING
 # ----------------------------------------------------
 
 INGREDIENT_MAP = {
+
+    # meats
     "beef stew meat": "beef",
     "ground beef": "beef",
     "beef cubes": "beef",
@@ -32,35 +35,41 @@ INGREDIENT_MAP = {
     "chicken drumsticks": "chicken",
     "lamb cubes": "lamb",
 
+    # grains
     "teff flour": "teff flour",
     "white teff flour": "teff flour",
     "barley flour": "barley flour",
     "wheat flour": "wheat flour",
 
+    # legumes
     "red lentils": "lentils",
     "yellow split peas": "split peas",
 
+    # vegetables
     "red onions": "onion",
     "onions": "onion",
     "fresh tomatoes": "tomato",
     "tomatoes": "tomato",
-
     "garlic": "garlic",
     "ginger": "ginger",
     "cabbage": "cabbage",
     "potatoes": "potato",
     "carrots": "carrot",
 
+    # spices
     "berbere spice": "berbere",
     "mitmita": "mitmita",
 
+    # beverages
     "green coffee beans": "coffee beans",
 
+    # injera
     "injera bread": "injera"
 }
 
+
 # ----------------------------------------------------
-# EXTRACT ITEMS FROM TEXT
+# EXTRACT ITEMS FROM INVOICE TEXT
 # ----------------------------------------------------
 
 def extract_items(text):
@@ -94,7 +103,7 @@ def extract_items(text):
 
 
 # ----------------------------------------------------
-# INSERT INTO DATABASE
+# INSERT PURCHASE INTO DATABASE
 # ----------------------------------------------------
 
 def insert_purchase(item):
@@ -103,56 +112,37 @@ def insert_purchase(item):
 
         # Ensure ingredient exists
         ingredient_query = text("""
-            INSERT INTO ingredients (ingredient_name, unit)
-            VALUES (:name, 'unit')
-            ON CONFLICT (ingredient_name) DO NOTHING
+        INSERT INTO ingredients (ingredient_name, unit)
+        VALUES (:name, 'unit')
+        ON CONFLICT (ingredient_name) DO NOTHING
         """)
 
         conn.execute(ingredient_query, {"name": item["name"]})
 
         # Insert purchase record
         purchase_query = text("""
-            INSERT INTO purchases
-            (ingredient_name, quantity, unit, price, purchase_date)
+        INSERT INTO purchases
+        (ingredient_name, quantity, unit, price, purchase_date)
 
-            VALUES
-            (:name, :quantity, 'unit', :price, CURRENT_DATE)
+        VALUES
+        (:name, :quantity, 'unit', :price, CURRENT_DATE)
         """)
 
         conn.execute(purchase_query, item)
 
         # Update inventory
         inventory_query = text("""
-            INSERT INTO inventory (ingredient_id, quantity)
+        INSERT INTO inventory (ingredient_id, quantity)
 
-            SELECT ingredient_id, :quantity
-            FROM ingredients
-            WHERE ingredient_name = :name
+        SELECT ingredient_id, :quantity
+        FROM ingredients
+        WHERE ingredient_name = :name
 
-            ON CONFLICT (ingredient_id)
-            DO UPDATE SET quantity = inventory.quantity + EXCLUDED.quantity
+        ON CONFLICT (ingredient_id)
+        DO UPDATE SET quantity = inventory.quantity + EXCLUDED.quantity
         """)
 
         conn.execute(inventory_query, item)
-
-
-# ----------------------------------------------------
-# CHECK IF INGREDIENT EXISTS
-# ----------------------------------------------------
-
-def ingredient_exists(name):
-
-    query = text("""
-        SELECT 1
-        FROM ingredients
-        WHERE ingredient_name = :name
-    """)
-
-    with engine.connect() as conn:
-
-        result = conn.execute(query, {"name": name}).fetchone()
-
-        return result is not None
 
 
 # ----------------------------------------------------
@@ -163,7 +153,16 @@ def process_all_invoices():
 
     print("Processing invoices...")
 
-    for file in os.listdir(INVOICE_FOLDER):
+    if not os.path.exists(INVOICE_FOLDER):
+
+        print("Invoice folder not found")
+        return
+
+    files = os.listdir(INVOICE_FOLDER)
+
+    print("Files detected:", files)
+
+    for file in files:
 
         if not file.endswith(".pdf"):
             continue
@@ -195,9 +194,10 @@ def process_all_invoices():
                                 row_text = " ".join(
                                     [str(cell) for cell in row if cell]
                                 )
+
                                 text_content += row_text + "\n"
 
-            print("------ RAW TEXT ------")
+            print("---- RAW INVOICE TEXT ----")
             print(text_content)
 
             items = extract_items(text_content)
@@ -208,15 +208,9 @@ def process_all_invoices():
 
                 print("Processing item:", item)
 
-                if ingredient_exists(item["name"]):
+                insert_purchase(item)
 
-                    insert_purchase(item)
-                    print("Inserted:", item["name"])
-
-                else:
-
-                    print("Unknown ingredient:", item["name"])
-                    insert_purchase(item)
+                print("Inserted:", item["name"])
 
             # Move processed file
             shutil.move(
@@ -224,7 +218,7 @@ def process_all_invoices():
                 os.path.join(PROCESSED_FOLDER, file)
             )
 
-            print("Moved to processed folder\n")
+            print("Moved invoice to processed folder\n")
 
         except Exception as e:
 
@@ -237,4 +231,5 @@ def process_all_invoices():
 # ----------------------------------------------------
 
 if __name__ == "__main__":
+
     process_all_invoices()
