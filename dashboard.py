@@ -290,6 +290,27 @@ with tabs[4]:
         st.plotly_chart(fig2, use_container_width=True)
 
         st.dataframe(dishes)
+    st.subheader("Restaurant Locations")
+
+    if not restaurants.empty:
+
+        fig_map = px.scatter_mapbox(
+            restaurants,
+            lat="lat",
+            lon="lon",
+            hover_name="Restaurant",
+            hover_data=["Rating"],
+            zoom=11,
+            height=500
+        )
+
+        fig_map.update_layout(
+            mapbox_style="open-street-map",
+            margin={"r":0,"t":0,"l":0,"b":0}
+        )
+
+        st.plotly_chart(fig_map, use_container_width=True)
+
 
 # =================================================
 # AI INSIGHTS
