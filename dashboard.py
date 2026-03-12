@@ -137,9 +137,8 @@ def load_purchases():
 # -------------------------------------------------
 # COMPETITOR SCRAPER
 # -------------------------------------------------
-
-@st.cache_data(ttl=600)
-
+    
+@st.cache_data(ttl=3600)
 def load_competitors():
 
     restaurants = pd.read_sql(
@@ -153,8 +152,6 @@ def load_competitors():
     )
 
     return restaurants, dishes
-    
-
 # -------------------------------------------------
 # HEADER
 # -------------------------------------------------
