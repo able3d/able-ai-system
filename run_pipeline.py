@@ -164,19 +164,29 @@ def run_drive_etl():
 # --------------------------------------------------
 # COMPETITOR INTELLIGENCE
 # --------------------------------------------------
-
 def run_competitor_etl():
 
     print("Checking competitor data freshness...")
 
-    with engine.connect() as conn:
+    try:
 
-        result = conn.execute(text("""
-        SELECT MAX(last_updated)
-        FROM competitors
-        """)).scalar()
+        with engine.connect() as conn:
 
-    # If no data or older than 24 hours → scrape again
+            result = conn.execute(text("""
+            SELECT MAX(last_updated)
+            FROM competitors
+            """)).scalar()
+
+    except Exception as e:
+
+        print("Error checking competitor table:", e)
+        result = None
+
+
+    # -----------------------------------------
+    # If no data OR older than 24 hours
+    # -----------------------------------------
+
     if result is None or result < datetime.utcnow() - timedelta(hours=24):
 
         print("Collecting competitor intelligence...")
@@ -185,12 +195,22 @@ def run_competitor_etl():
 
             data = scrape_google_reviews()
 
-            save_competitor_data(
-                data["restaurants"],
-                data["dishes"]
-            )
+            restaurants = data["restaurants"]
+            dishes = data["dishes"]
 
-            print("Competitor data updated")
+            print("Restaurants scraped:", len(restaurants))
+            print("Dishes scraped:", len(dishes))
+
+            # Only insert if data exists
+            if not restaurants.empty:
+
+                save_competitor_data(restaurants, dishes)
+
+                print("Competitor data updated successfully")
+
+            else:
+
+                print("No restaurants scraped. Skipping database update.")
 
         except Exception as e:
 
@@ -199,7 +219,6 @@ def run_competitor_etl():
     else:
 
         print("Competitor data is recent. Skipping scrape.")
-
 
 # --------------------------------------------------
 # INVENTORY DEDUCTION
