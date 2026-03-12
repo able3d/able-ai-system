@@ -1,8 +1,19 @@
 from playwright.sync_api import sync_playwright
 import pandas as pd
-
 from sqlalchemy import create_engine, text
 import os
+
+
+# ---------------------------------------------------
+# DATABASE CONNECTION
+# ---------------------------------------------------
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable not set")
+
+engine = create_engine(DATABASE_URL)
 
 
 # ---------------------------------------------------
@@ -21,27 +32,7 @@ dish_keywords = [
 
 
 # ---------------------------------------------------
-# CALCULATE DISH DEMAND
-# ---------------------------------------------------
-
-def calculate_demand(reviews):
-
-    score = 0
-
-    for review in reviews:
-
-        text = review.lower()
-
-        for dish in dish_keywords:
-
-            if dish in text:
-                score += 1
-
-    return score
-
-
-# ---------------------------------------------------
-# EXTRACT DISH MENTIONS
+# EXTRACT DISH MENTIONS (USED IF REVIEWS EXIST)
 # ---------------------------------------------------
 
 def extract_dishes(reviews):
@@ -66,13 +57,12 @@ def extract_dishes(reviews):
 
 
 # ---------------------------------------------------
-# GOOGLE MAPS SCRAPER
+# FAST GOOGLE MAPS SCRAPER
 # ---------------------------------------------------
 
 def scrape_google_reviews():
 
     restaurants_data = []
-    all_reviews = []
 
     with sync_playwright() as p:
 
@@ -84,7 +74,8 @@ def scrape_google_reviews():
             "https://www.google.com/maps/search/ethiopian+restaurant+new+york/"
         )
 
-        page.wait_for_timeout(5000)
+        # wait for restaurant cards
+        page.wait_for_selector("div.Nv2PK")
 
         cards = page.locator("div.Nv2PK")
 
@@ -112,71 +103,43 @@ def scrape_google_reviews():
                     lat = float(coords[0])
                     lon = float(coords[1])
 
-                # open restaurant page
-                card.click()
-
-                page.wait_for_timeout(3000)
-
-                reviews = []
-
-                review_elements = page.locator("span.wiI7pd")
-
-                for j in range(min(review_elements.count(), 20)):
-
-                    reviews.append(
-                        review_elements.nth(j).inner_text()
-                    )
-
-                demand_score = calculate_demand(reviews)
-
-                # ---------------------------------------------------
-                # FIXED INDENTATION + SAFE LAT/LON
-                # ---------------------------------------------------
-
                 if lat is not None and lon is not None:
 
-                    restaurants_data.append(
-                        {
-                            "Restaurant": name,
-                            "Rating": float(rating),
-                            "lat": lat,
-                            "lon": lon,
-                            "demand": demand_score,
-                        }
-                    )
-
-                all_reviews.extend(reviews)
+                    restaurants_data.append({
+                        "Restaurant": name,
+                        "Rating": float(rating),
+                        "lat": lat,
+                        "lon": lon,
+                        "demand": 0
+                    })
 
             except Exception as e:
 
-                print("Error scraping restaurant:", e)
+                print("Scrape error:", e)
 
         browser.close()
 
-    # ---------------------------------------------------
-    # CREATE DATAFRAMES
-    # ---------------------------------------------------
-
     restaurants_df = pd.DataFrame(restaurants_data)
 
+    # ensure no null coordinates
     if not restaurants_df.empty:
 
         restaurants_df = restaurants_df.dropna(
             subset=["lat", "lon"]
         )
 
-    dishes_df = extract_dishes(all_reviews)
+    # empty dish dataframe (fast mode)
+    dishes_df = pd.DataFrame(columns=["dish", "mentions"])
 
     return {
         "restaurants": restaurants_df,
-        "dishes": dishes_df,
+        "dishes": dishes_df
     }
-    
-    DATABASE_URL = os.getenv("DATABASE_URL")
-    engine = create_engine(DATABASE_URL)
 
-    if not DATABASE_URL:
-        raise ValueError("DATABASE_URL environment variable not set")
+
+# ---------------------------------------------------
+# SAVE COMPETITOR DATA TO DATABASE
+# ---------------------------------------------------
 
 def save_competitor_data(restaurants_df, dishes_df):
 
@@ -185,13 +148,14 @@ def save_competitor_data(restaurants_df, dishes_df):
         conn.execute(text("DELETE FROM competitors"))
         conn.execute(text("DELETE FROM competitor_dishes"))
 
+        # insert restaurants
         for _, row in restaurants_df.iterrows():
 
             conn.execute(text("""
-            INSERT INTO competitors
-            (restaurant_name, rating, lat, lon, demand_score)
-            VALUES
-            (:name, :rating, :lat, :lon, :demand)
+                INSERT INTO competitors
+                (restaurant_name, rating, lat, lon, demand_score)
+                VALUES
+                (:name, :rating, :lat, :lon, :demand)
             """), {
                 "name": row["Restaurant"],
                 "rating": row["Rating"],
@@ -200,21 +164,33 @@ def save_competitor_data(restaurants_df, dishes_df):
                 "demand": row["demand"]
             })
 
+        # insert dishes if available
         for _, row in dishes_df.iterrows():
 
             conn.execute(text("""
-            INSERT INTO competitor_dishes
-            (dish, mentions)
-            VALUES
-            (:dish, :mentions)
+                INSERT INTO competitor_dishes
+                (dish, mentions)
+                VALUES
+                (:dish, :mentions)
             """), {
                 "dish": row["dish"],
                 "mentions": row["mentions"]
             })
 
-data = scrape_google_reviews()
 
-save_competitor_data(
-    data["restaurants"],
-    data["dishes"]
-)
+# ---------------------------------------------------
+# MANUAL TEST RUN
+# ---------------------------------------------------
+
+if __name__ == "__main__":
+
+    print("Running competitor scraper...")
+
+    data = scrape_google_reviews()
+
+    save_competitor_data(
+        data["restaurants"],
+        data["dishes"]
+    )
+
+    print("Competitor data saved successfully.")
