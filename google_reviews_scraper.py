@@ -1,7 +1,11 @@
 from playwright.sync_api import sync_playwright
 import pandas as pd
 
-# Ethiopian dish keywords
+
+# ---------------------------------------------------
+# ETHIOPIAN DISH KEYWORDS
+# ---------------------------------------------------
+
 dish_keywords = [
     "doro wat",
     "injera",
@@ -12,19 +16,30 @@ dish_keywords = [
     "vegetarian combo",
 ]
 
+
+# ---------------------------------------------------
+# CALCULATE DISH DEMAND
+# ---------------------------------------------------
+
 def calculate_demand(reviews):
 
     score = 0
 
     for review in reviews:
+
         text = review.lower()
 
         for dish in dish_keywords:
+
             if dish in text:
                 score += 1
 
     return score
 
+
+# ---------------------------------------------------
+# EXTRACT DISH MENTIONS
+# ---------------------------------------------------
 
 def extract_dishes(reviews):
 
@@ -37,6 +52,7 @@ def extract_dishes(reviews):
         for dish in dish_keywords:
 
             if dish in text:
+
                 dish_count[dish] = dish_count.get(dish, 0) + 1
 
     dish_df = pd.DataFrame(
@@ -45,6 +61,10 @@ def extract_dishes(reviews):
 
     return dish_df
 
+
+# ---------------------------------------------------
+# GOOGLE MAPS SCRAPER
+# ---------------------------------------------------
 
 def scrape_google_reviews():
 
@@ -65,7 +85,7 @@ def scrape_google_reviews():
 
         cards = page.locator("div.Nv2PK")
 
-        count = min(cards.count(), 10)
+        count = min(cards.count(), 5)
 
         for i in range(count):
 
@@ -89,6 +109,7 @@ def scrape_google_reviews():
                     lat = float(coords[0])
                     lon = float(coords[1])
 
+                # open restaurant page
                 card.click()
 
                 page.wait_for_timeout(3000)
@@ -99,29 +120,47 @@ def scrape_google_reviews():
 
                 for j in range(min(review_elements.count(), 20)):
 
-                    reviews.append(review_elements.nth(j).inner_text())
+                    reviews.append(
+                        review_elements.nth(j).inner_text()
+                    )
 
                 demand_score = calculate_demand(reviews)
 
-                if lat and lon:
-                restaurants_data.append(
-                    {
-                        "Restaurant": name,
-                        "Rating": float(rating),
-                        "lat": lat,
-                        "lon": lon,
-                        "demand": demand_score,
-                    }
-                )
+                # ---------------------------------------------------
+                # FIXED INDENTATION + SAFE LAT/LON
+                # ---------------------------------------------------
+
+                if lat is not None and lon is not None:
+
+                    restaurants_data.append(
+                        {
+                            "Restaurant": name,
+                            "Rating": float(rating),
+                            "lat": lat,
+                            "lon": lon,
+                            "demand": demand_score,
+                        }
+                    )
 
                 all_reviews.extend(reviews)
 
-            except:
-                pass
+            except Exception as e:
+
+                print("Error scraping restaurant:", e)
 
         browser.close()
 
+    # ---------------------------------------------------
+    # CREATE DATAFRAMES
+    # ---------------------------------------------------
+
     restaurants_df = pd.DataFrame(restaurants_data)
+
+    if not restaurants_df.empty:
+
+        restaurants_df = restaurants_df.dropna(
+            subset=["lat", "lon"]
+        )
 
     dishes_df = extract_dishes(all_reviews)
 
@@ -129,4 +168,3 @@ def scrape_google_reviews():
         "restaurants": restaurants_df,
         "dishes": dishes_df,
     }
-
