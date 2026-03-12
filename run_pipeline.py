@@ -1,7 +1,7 @@
 from etl.google_drive_etl import download_all_files
 
-from parse_invoices import process_all_invoices
-from parse_receipts import process_all_receipts
+import parse_invoices 
+import parse_receipts 
 
 from sqlalchemy import create_engine, text
 import os
