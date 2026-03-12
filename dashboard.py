@@ -1,12 +1,15 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from sqlalchemy import create_engine
-from google_reviews_scraper import scrape_google_reviews
 import os
 from sqlalchemy import create_engine, text
+from google_reviews_scraper import scrape_google_reviews
 from run_pipeline import run_pipeline
-run_pepeline()
+
+# Run pipeline only once
+if "pipeline_ran" not in st.session_state:
+    run_pipeline()
+    st.session_state["pipeline_ran"] = True
 # -------------------------------
 # PAGE CONFIG
 # -------------------------------
