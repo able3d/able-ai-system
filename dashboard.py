@@ -4,7 +4,6 @@ import plotly.express as px
 import os
 from sqlalchemy import create_engine
 import run_pipeline
-from google_reviews_scraper import scrape_google_reviews
 
 
 # -------------------------------------------------
@@ -18,43 +17,42 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
-# PWA / IPHONE FULLSCREEN SUPPORT
+# PWA SUPPORT (IPHONE FULLSCREEN)
 # -------------------------------------------------
 
 st.markdown("""
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Able AI">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/1046/1046784.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 """, unsafe_allow_html=True)
 
+
 # -------------------------------------------------
-# UI STYLING
+# MOBILE UI STYLE
 # -------------------------------------------------
 
 st.markdown("""
 <style>
 
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
+#MainMenu {visibility:hidden;}
+footer {visibility:hidden;}
+header {visibility:hidden;}
 
 .block-container{
     padding-top:1rem;
-    max-width:700px;
+    max-width:650px;
+}
+
+h1,h2,h3{
+    text-align:center;
 }
 
 [data-testid="metric-container"]{
     background-color:#111;
     border-radius:12px;
     padding:15px;
-    border:1px solid #222;
-}
-
-button[kind="primary"]{
-    width:100%;
-    height:50px;
+    border:1px solid #333;
 }
 
 </style>
@@ -62,13 +60,12 @@ button[kind="primary"]{
 
 
 # -------------------------------------------------
-# RUN DATA PIPELINE
+# RUN PIPELINE ONLY ONCE
 # -------------------------------------------------
 
 if "pipeline_ran" not in st.session_state:
 
     with st.spinner("Updating restaurant data..."):
-
         run_pipeline.run_pipeline()
 
     st.session_state["pipeline_ran"] = True
@@ -79,6 +76,7 @@ if "pipeline_ran" not in st.session_state:
 # -------------------------------------------------
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+
 engine = create_engine(DATABASE_URL)
 
 
@@ -124,61 +122,31 @@ def load_purchases():
     return pd.read_sql("SELECT * FROM purchases", engine)
 
 
-@st.cache_data(ttl=60)
-def load_usage():
-
-    query = """
-    SELECT
-        i.ingredient_name,
-        SUM(b.quantity * s.orders) AS quantity_used
-    FROM dish_bom b
-    JOIN menu_sales s
-    ON b.item_id = s.item_id
-    JOIN ingredients i
-    ON b.ingredient_id = i.ingredient_id
-    GROUP BY i.ingredient_name
-    """
-
-    return pd.read_sql(query, engine)
-
-
-@st.cache_data(ttl=3600)
-def get_competitor_data():
-
-    return scrape_google_reviews()
-
-
 # -------------------------------------------------
 # HEADER
 # -------------------------------------------------
 
-st.markdown(
-"""
-<h2 style='text-align:center;'>
-🍽 Able AI Restaurant Intelligence
-</h2>
-""",
-unsafe_allow_html=True
-)
+st.markdown("""
+# 🍽 Able AI Restaurant Intelligence
+""")
 
 
 # -------------------------------------------------
-# NAVIGATION
+# TABS
 # -------------------------------------------------
 
 tabs = st.tabs([
     "📊 Dashboard",
     "📦 Inventory",
     "🛒 Purchases",
-    "🍽 Menu Analytics",
-    "🧠 AI Insights",
-    "🌍 Competitor Intelligence"
+    "🍽 Menu",
+    "🧠 AI Insights"
 ])
 
 
-# =====================================================
+# =================================================
 # DASHBOARD
-# =====================================================
+# =================================================
 
 with tabs[0]:
 
@@ -191,14 +159,24 @@ with tabs[0]:
 
     st.metric("Menu Items", menu["item_name"].nunique())
 
-    fig = px.bar(menu, x="item_name", y="revenue", title="Menu Revenue")
+    fig = px.bar(
+        menu,
+        x="item_name",
+        y="revenue",
+        title="Revenue by Dish"
+    )
 
-    st.plotly_chart(fig, use_container_width=True, key="dashboard_revenue")
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config={"displayModeBar": False},
+        key="revenue_chart"
+    )
 
 
-# =====================================================
+# =================================================
 # INVENTORY
-# =====================================================
+# =================================================
 
 with tabs[1]:
 
@@ -206,7 +184,7 @@ with tabs[1]:
 
     if inventory.empty:
 
-        st.info("No inventory data")
+        st.warning("No inventory data available")
 
     else:
 
@@ -217,33 +195,25 @@ with tabs[1]:
             title="Remaining Inventory"
         )
 
-        st.plotly_chart(fig, use_container_width=True, key="inventory_chart")
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            config={"displayModeBar": False},
+            key="inventory_chart"
+        )
 
-        low_stock = inventory[inventory["remaining"] < 500]
+        low_stock = inventory[inventory["remaining"] < 300]
 
         if not low_stock.empty:
 
-            st.warning("⚠ Low stock detected")
+            st.error("⚠ Low Inventory Warning")
 
             st.dataframe(low_stock)
 
-    usage = load_usage()
 
-    if not usage.empty:
-
-        fig = px.bar(
-            usage,
-            x="ingredient_name",
-            y="quantity_used",
-            title="Ingredient Usage"
-        )
-
-        st.plotly_chart(fig, use_container_width=True, key="usage_chart")
-
-
-# =====================================================
+# =================================================
 # PURCHASES
-# =====================================================
+# =================================================
 
 with tabs[2]:
 
@@ -251,7 +221,7 @@ with tabs[2]:
 
     if purchases.empty:
 
-        st.warning("No purchases found")
+        st.info("No purchases found yet")
 
     else:
 
@@ -262,14 +232,19 @@ with tabs[2]:
             title="Purchased Ingredients"
         )
 
-        st.plotly_chart(fig, use_container_width=True, key="purchases_chart")
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            config={"displayModeBar": False},
+            key="purchases_chart"
+        )
 
         st.dataframe(purchases)
 
 
-# =====================================================
+# =================================================
 # MENU ANALYTICS
-# =====================================================
+# =================================================
 
 with tabs[3]:
 
@@ -282,7 +257,12 @@ with tabs[3]:
         title="Most Popular Dishes"
     )
 
-    st.plotly_chart(fig, use_container_width=True, key="menu_orders_chart")
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config={"displayModeBar": False},
+        key="menu_orders"
+    )
 
     fig2 = px.bar(
         menu,
@@ -291,12 +271,17 @@ with tabs[3]:
         title="Revenue by Dish"
     )
 
-    st.plotly_chart(fig2, use_container_width=True, key="menu_revenue_chart")
+    st.plotly_chart(
+        fig2,
+        use_container_width=True,
+        config={"displayModeBar": False},
+        key="menu_revenue"
+    )
 
 
-# =====================================================
+# =================================================
 # AI INSIGHTS
-# =====================================================
+# =================================================
 
 with tabs[4]:
 
@@ -307,7 +292,10 @@ with tabs[4]:
 
     if not menu.empty:
 
-        top = menu.sort_values("orders", ascending=False).iloc[0]
+        top = menu.sort_values(
+            "orders",
+            ascending=False
+        ).iloc[0]
 
         st.success(f"🔥 {top['item_name']} is your most popular dish")
 
@@ -317,87 +305,15 @@ with tabs[4]:
 
         if not low.empty:
 
-            st.error(
-                f"⚠ {low.iloc[0]['ingredient_name']} may run out soon"
+            st.warning(
+                f"⚠ {low.iloc[0]['ingredient_name']} inventory running low"
             )
 
     revenue = menu["revenue"].sum()
 
-    if revenue < 1000:
+    predicted = revenue * 1.1
 
-        st.info(
-            "💡 Consider combo meals to increase average order value"
-        )
-
-    if not menu.empty:
-
-        predicted = menu["revenue"].mean() * 30
-
-        st.metric(
-            "Predicted Monthly Revenue",
-            f"${predicted:,.0f}"
-        )
-
-
-# =====================================================
-# COMPETITOR INTELLIGENCE
-# =====================================================
-
-with tabs[5]:
-
-    st.subheader("Nearby Ethiopian Restaurants")
-
-    if st.button("Run Market Analysis"):
-
-        with st.spinner("Analyzing market..."):
-
-            data = get_competitor_data()
-
-        restaurants = data["restaurants"]
-        dishes = data["dishes"]
-
-        if not restaurants.empty:
-
-            fig = px.scatter_mapbox(
-                restaurants,
-                lat="lat",
-                lon="lon",
-                hover_name="Restaurant",
-                hover_data=["Rating"],
-                size="Rating",
-                zoom=12
-            )
-
-            fig.update_layout(mapbox_style="open-street-map")
-
-            st.plotly_chart(fig, use_container_width=True, key="competitor_map")
-
-        st.subheader("Top Rated Restaurants")
-
-        top_rest = restaurants.sort_values(
-            "Rating",
-            ascending=False
-        ).head(5)
-
-        st.dataframe(top_rest)
-
-        st.subheader("Trending Dishes Nearby")
-
-        top_dishes = dishes.sort_values(
-            "mentions",
-            ascending=False
-        ).head(5)
-
-        fig = px.bar(
-            top_dishes,
-            x="dish",
-            y="mentions"
-        )
-
-        st.plotly_chart(fig, use_container_width=True, key="competitor_dishes")
-
-        if not top_dishes.empty:
-
-            st.success(
-                f"Opportunity: {top_dishes.iloc[0]['dish']} is trending nearby"
-            )
+    st.metric(
+        "Predicted Revenue Next Period",
+        f"${predicted:,.0f}"
+    )
