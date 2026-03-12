@@ -1,7 +1,10 @@
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
+
 import json
 import os
+import io
 
 
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
@@ -10,11 +13,6 @@ SERVICE_ACCOUNT_FILE = "service_account.json"
 
 def authenticate_drive():
 
-    creds = None
-
-    # -----------------------------
-    # RUNNING ON RENDER
-    # -----------------------------
     if os.getenv("SERVICE_ACCOUNT_JSON"):
 
         service_account_info = json.loads(
@@ -28,9 +26,6 @@ def authenticate_drive():
 
         print("Using service account from environment")
 
-    # -----------------------------
-    # RUNNING LOCALLY
-    # -----------------------------
     elif os.path.exists(SERVICE_ACCOUNT_FILE):
 
         creds = Credentials.from_service_account_file(
@@ -43,15 +38,10 @@ def authenticate_drive():
     else:
 
         raise Exception(
-            "No Google credentials found. "
-            "Add SERVICE_ACCOUNT_JSON to environment or provide service_account.json"
+            "No Google credentials found."
         )
 
-    service = build(
-        "drive",
-        "v3",
-        credentials=creds
-    )
+    service = build("drive", "v3", credentials=creds)
 
     return service
 
@@ -64,12 +54,17 @@ def download_all_files(folder_id, local_folder):
 
     results = service.files().list(
         q=f"'{folder_id}' in parents and trashed=false",
-        fields="files(id, name)"
+        fields="files(id, name)",
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True
     ).execute()
 
     files = results.get("files", [])
 
     print("Files found:", len(files))
+
+    for f in files:
+        print("Drive file:", f["name"])
 
     for file in files:
 
@@ -87,7 +82,11 @@ def download_all_files(folder_id, local_folder):
 
         request = service.files().get_media(fileId=file_id)
 
-        with open(file_path, "wb") as f:
-            f.write(request.execute())
+        fh = io.FileIO(file_path, "wb")
+        downloader = MediaIoBaseDownload(fh, request)
+
+        done = False
+        while done is False:
+            status, done = downloader.next_chunk()
 
         print("Downloaded:", file_name)
