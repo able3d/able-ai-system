@@ -7,6 +7,7 @@ from google_reviews_scraper import save_competitor_data
 
 from sqlalchemy import create_engine, text
 import os
+from datetime import datetime, timedelta
 
 
 # --------------------------------------------------
@@ -21,7 +22,6 @@ RECEIPT_FOLDER_ID = os.getenv("RECEIPT_FOLDER_ID")
 INVOICE_FOLDER = "data/invoices"
 RECEIPT_FOLDER = "data/receipts"
 
-
 engine = create_engine(DATABASE_URL)
 
 
@@ -31,7 +31,7 @@ engine = create_engine(DATABASE_URL)
 
 def init_db():
 
-    with engine.connect() as conn:
+    with engine.begin() as conn:
 
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS menu_items (
@@ -84,9 +84,9 @@ def init_db():
         )
         """))
 
-        # --------------------------------------------
+        # ---------------------------
         # COMPETITOR TABLES
-        # --------------------------------------------
+        # ---------------------------
 
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS competitors (
@@ -107,8 +107,6 @@ def init_db():
         )
         """))
 
-        conn.commit()
-
 
 # --------------------------------------------------
 # GOOGLE DRIVE ETL
@@ -121,9 +119,9 @@ def run_drive_etl():
     os.makedirs(INVOICE_FOLDER, exist_ok=True)
     os.makedirs(RECEIPT_FOLDER, exist_ok=True)
 
-    # ---------------------------------------
-    # DOWNLOAD INVOICES
-    # ---------------------------------------
+    # -------------------------
+    # INVOICES
+    # -------------------------
 
     if INVOICE_FOLDER_ID:
 
@@ -139,11 +137,12 @@ def run_drive_etl():
 
     else:
 
-        print("INVOICE_FOLDER_ID not configured")
+        print("No invoice folder configured")
 
-    # ---------------------------------------
-    # DOWNLOAD RECEIPTS
-    # ---------------------------------------
+
+    # -------------------------
+    # RECEIPTS
+    # -------------------------
 
     if RECEIPT_FOLDER_ID:
 
@@ -159,28 +158,47 @@ def run_drive_etl():
 
     else:
 
-        print("RECEIPT_FOLDER_ID not configured")
+        print("No receipt folder configured")
 
-    # ---------------------------------------
-    # COMPETITOR INTELLIGENCE
-    # ---------------------------------------
 
-    print("Collecting competitor intelligence...")
+# --------------------------------------------------
+# COMPETITOR INTELLIGENCE
+# --------------------------------------------------
 
-    try:
+def run_competitor_etl():
 
-        data = scrape_google_reviews()
+    print("Checking competitor data freshness...")
 
-        save_competitor_data(
-            data["restaurants"],
-            data["dishes"]
-        )
+    with engine.connect() as conn:
 
-        print("Competitor data saved successfully")
+        result = conn.execute(text("""
+        SELECT MAX(last_updated)
+        FROM competitors
+        """)).scalar()
 
-    except Exception as e:
+    # If no data or older than 24 hours → scrape again
+    if result is None or result < datetime.utcnow() - timedelta(hours=24):
 
-        print("Competitor scraping failed:", e)
+        print("Collecting competitor intelligence...")
+
+        try:
+
+            data = scrape_google_reviews()
+
+            save_competitor_data(
+                data["restaurants"],
+                data["dishes"]
+            )
+
+            print("Competitor data updated")
+
+        except Exception as e:
+
+            print("Competitor scraping failed:", e)
+
+    else:
+
+        print("Competitor data is recent. Skipping scrape.")
 
 
 # --------------------------------------------------
@@ -191,7 +209,7 @@ def deduct_inventory():
 
     print("Updating inventory usage...")
 
-    with engine.connect() as conn:
+    with engine.begin() as conn:
 
         conn.execute(text("""
 
@@ -215,8 +233,6 @@ def deduct_inventory():
 
         """))
 
-        conn.commit()
-
 
 # --------------------------------------------------
 # RUN PIPELINE
@@ -227,7 +243,10 @@ def run_pipeline():
     print("Initializing database...")
     init_db()
 
+    print("Running ETL pipelines...")
     run_drive_etl()
+
+    run_competitor_etl()
 
     deduct_inventory()
 
