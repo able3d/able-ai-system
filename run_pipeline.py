@@ -166,7 +166,10 @@ def seed_data():
 
         conn.execute(text("""
         INSERT INTO menu_sales (item_id, orders, revenue)
-        SELECT item_id, 0, 0
+        SELECT
+            item_id,
+            FLOOR(random()*20)+5 AS orders,
+            (FLOOR(random()*20)+5) * 15 AS revenue
         FROM menu_items
         ON CONFLICT DO NOTHING
         """))
