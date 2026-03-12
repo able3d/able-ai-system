@@ -6,13 +6,18 @@ from sqlalchemy import create_engine, text
 from google_reviews_scraper import scrape_google_reviews
 from run_pipeline import run_pipeline
 
-# Run pipeline only once
+# -------------------------------------------------
+# RUN PIPELINE ONCE
+# -------------------------------------------------
+
 if "pipeline_ran" not in st.session_state:
     run_pipeline()
     st.session_state["pipeline_ran"] = True
-# -------------------------------
+
+
+# -------------------------------------------------
 # PAGE CONFIG
-# -------------------------------
+# -------------------------------------------------
 
 st.set_page_config(
     page_title="Able AI Restaurant Intelligence",
@@ -20,9 +25,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# -------------------------------
+# -------------------------------------------------
 # CLEAN UI
-# -------------------------------
+# -------------------------------------------------
 
 st.markdown("""
 <style>
@@ -44,9 +49,9 @@ header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
-# -------------------------------
+# -------------------------------------------------
 # HEADER
-# -------------------------------
+# -------------------------------------------------
 
 st.markdown(
 """
@@ -57,18 +62,18 @@ st.markdown(
 unsafe_allow_html=True
 )
 
-# -------------------------------
-# DATABASE
-# -------------------------------
+# -------------------------------------------------
+# DATABASE CONNECTION
+# -------------------------------------------------
 
-
-from sqlalchemy import create_engine, text
 DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL)
 
-st.write(pd.read_sql("SELECT * FROM menu_items", engine))
-st.write(pd.read_sql("SELECT * FROM menu_sales", engine))
-st.write(pd.read_sql("SELECT * FROM purchases", engine))
+
+# -------------------------------------------------
+# DATA LOADERS
+# -------------------------------------------------
+
 @st.cache_data
 def load_menu():
 
@@ -84,114 +89,44 @@ def load_menu():
     """
 
     try:
-
         df = pd.read_sql(query, engine)
-
         df.columns = df.columns.str.lower()
-
         return df
 
-    except Exception as e:
-
-        print("Menu load failed:", e)
-
+    except:
         return pd.DataFrame(
             columns=["item_name","orders","revenue"]
         )
 
 
-
-def ensure_tables():
-
-    with engine.connect() as conn:
-
-        # ----------------------------
-        # MENU ITEMS
-        # ----------------------------
-
-        conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS menu_items (
-            item_id SERIAL PRIMARY KEY,
-            item_name TEXT UNIQUE
-        )
-        """))
-
-        # ----------------------------
-        # MENU SALES
-        # ----------------------------
-
-        conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS menu_sales (
-            sale_id SERIAL PRIMARY KEY,
-            item_id INTEGER,
-            orders INTEGER DEFAULT 0,
-            revenue FLOAT DEFAULT 0
-        )
-        """))
-
-        # ----------------------------
-        # INVENTORY
-        # ----------------------------
-
-        conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS inventory (
-            ingredient_id SERIAL PRIMARY KEY,
-            ingredient_name TEXT,
-            quantity FLOAT,
-            unit TEXT
-        )
-        """))
-
-        # ----------------------------
-        # PURCHASES
-        # ----------------------------
-
-        conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS purchases (
-            purchase_id SERIAL PRIMARY KEY,
-            ingredient_name TEXT,
-            quantity FLOAT,
-            unit TEXT,
-            price FLOAT,
-            purchase_date DATE
-        )
-        """))
-
-        conn.commit()
-
-ensure_tables()
-# -------------------------------
-# DATA LOADERS
-# -------------------------------
-
+# -------------------------------------------------
+# INVENTORY (PURCHASE - USAGE)
+# -------------------------------------------------
 
 @st.cache_data
 def load_inventory():
 
+    query = """
+    SELECT
+        p.ingredient_name,
+        SUM(p.quantity) purchased,
+        COALESCE(u.quantity_used,0) used,
+        SUM(p.quantity) - COALESCE(u.quantity_used,0) remaining
+    FROM purchases p
+    LEFT JOIN inventory_usage u
+    ON p.ingredient_name = u.ingredient_name
+    GROUP BY p.ingredient_name, u.quantity_used
+    """
+
     try:
-
-        df = pd.read_sql("SELECT * FROM inventory", engine)
-
-        # Normalize column names
+        df = pd.read_sql(query, engine)
         df.columns = df.columns.str.lower()
-
-        if "ingredient" in df.columns:
-            df = df.rename(columns={"ingredient":"ingredient_name"})
-
-        if "qty" in df.columns:
-            df = df.rename(columns={"qty":"quantity"})
-
         return df
 
-    except Exception as e:
-
-        print("Inventory load failed:", e)
-
+    except:
         return pd.DataFrame(
-            columns=["ingredient_name","quantity","unit"]
+            columns=["ingredient_name","purchased","used","remaining"]
         )
-
-
 
 
 @st.cache_data
@@ -203,21 +138,30 @@ def load_purchases():
 
         df.columns = df.columns.str.lower()
 
-        if "item_name" in df.columns:
-            df["ingredient_name"] = df["item_name"]
-
         return df
 
-    except Exception as e:
-
-        print("Purchases load failed:", e)
+    except:
 
         return pd.DataFrame()
 
 
-# -------------------------------
+@st.cache_data
+def load_usage():
+
+    try:
+
+        df = pd.read_sql("SELECT * FROM inventory_usage", engine)
+
+        return df
+
+    except:
+
+        return pd.DataFrame()
+
+
+# -------------------------------------------------
 # NAVIGATION
-# -------------------------------
+# -------------------------------------------------
 
 tabs = st.tabs([
     "📊 Dashboard",
@@ -240,8 +184,8 @@ with tabs[0]:
     col1, col2, col3 = st.columns(3)
 
     col1.metric("Total Revenue", f"${menu['revenue'].sum():,.0f}")
-    col2.metric("Total Orders", menu['orders'].sum())
-    col3.metric("Menu Items", menu['item_name'].nunique())
+    col2.metric("Total Orders", int(menu["orders"].sum()))
+    col3.metric("Menu Items", menu["item_name"].nunique())
 
     st.divider()
 
@@ -254,32 +198,62 @@ with tabs[0]:
 
     st.plotly_chart(fig, use_container_width=True)
 
+
 # =====================================================
 # INVENTORY
 # =====================================================
 
 with tabs[1]:
 
-    st.subheader("Inventory")
+    st.subheader("Inventory Status")
 
     inventory = load_inventory()
 
     if inventory.empty:
 
-        st.info("No Inventory data available. Add ingredients to database.")
+        st.info("No inventory data available")
 
     else:
 
         fig = px.bar(
             inventory,
             x="ingredient_name",
-            y="quantity",
-            title="Inventory Levels"
+            y="remaining",
+            title="Remaining Inventory"
         )
 
         st.plotly_chart(fig, use_container_width=True)
 
         st.dataframe(inventory, use_container_width=True)
+
+        # LOW STOCK ALERT
+
+        low_stock = inventory[inventory["remaining"] < 500]
+
+        if not low_stock.empty:
+
+            st.warning("⚠ Low Stock Ingredients")
+
+            st.dataframe(low_stock)
+
+
+    # INGREDIENT CONSUMPTION
+
+    usage = load_usage()
+
+    if not usage.empty:
+
+        st.subheader("Ingredient Consumption")
+
+        fig = px.bar(
+            usage,
+            x="ingredient_name",
+            y="quantity_used",
+            title="Ingredient Usage From Dish Sales"
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
 
 # =====================================================
 # PURCHASES
@@ -297,20 +271,17 @@ with tabs[2]:
 
     else:
 
-        # GRAPH FIRST
-
         fig = px.bar(
             purchases,
-            x="item_name",
+            x="ingredient_name",
             y="quantity",
             title="Purchased Ingredients"
         )
 
         st.plotly_chart(fig, use_container_width=True)
 
-        # TABLE BELOW
-
         st.dataframe(purchases, use_container_width=True)
+
 
 # =====================================================
 # MENU ANALYTICS
@@ -348,6 +319,7 @@ with tabs[3]:
 
         st.dataframe(menu, use_container_width=True)
 
+
 # =====================================================
 # COMPETITOR INTELLIGENCE
 # =====================================================
@@ -367,9 +339,7 @@ with tabs[4]:
         restaurants = data["restaurants"]
         dishes = data["dishes"]
 
-        # ----------------------------
         # MAP
-        # ----------------------------
 
         st.subheader("Competitor Map")
 
@@ -389,9 +359,7 @@ with tabs[4]:
 
             st.plotly_chart(fig, use_container_width=True)
 
-        # ----------------------------
         # DEMAND HEATMAP
-        # ----------------------------
 
         st.subheader("Demand Heatmap")
 
@@ -410,17 +378,13 @@ with tabs[4]:
 
             st.plotly_chart(heatmap, use_container_width=True)
 
-        # ----------------------------
-        # COMPETITOR TABLE
-        # ----------------------------
+        # RESTAURANT TABLE
 
         st.subheader("Competitor Restaurants")
 
         st.dataframe(restaurants, use_container_width=True)
 
-        # ----------------------------
         # POPULAR DISHES
-        # ----------------------------
 
         st.subheader("Popular Dishes")
 
@@ -435,9 +399,7 @@ with tabs[4]:
 
             st.plotly_chart(fig, use_container_width=True)
 
-        # ----------------------------
         # AI RECOMMENDATION
-        # ----------------------------
 
         st.subheader("AI Menu Opportunity")
 
