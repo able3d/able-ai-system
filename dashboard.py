@@ -2,16 +2,21 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from google_reviews_scraper import scrape_google_reviews
 from run_pipeline import run_pipeline
+
 
 # -------------------------------------------------
 # RUN PIPELINE ONCE
 # -------------------------------------------------
 
 if "pipeline_ran" not in st.session_state:
-    run_pipeline()
+
+    with st.spinner("Updating restaurant data..."):
+
+        run_pipeline()
+
     st.session_state["pipeline_ran"] = True
 
 
@@ -74,7 +79,7 @@ engine = create_engine(DATABASE_URL)
 # DATA LOADERS
 # -------------------------------------------------
 
-@st.cache_data
+@st.cache_data(ttl=60)
 def load_menu():
 
     query = """
@@ -89,20 +94,24 @@ def load_menu():
     """
 
     try:
+
         df = pd.read_sql(query, engine)
         df.columns = df.columns.str.lower()
+
         return df
 
     except:
+
         return pd.DataFrame(
             columns=["item_name","orders","revenue"]
         )
 
 
 # -------------------------------------------------
-# INVENTORY (PURCHASE - USAGE)
+# INVENTORY
 # -------------------------------------------------
-@st.cache_data(ttl=30)
+
+@st.cache_data(ttl=60)
 def load_inventory():
 
     query = """
@@ -116,16 +125,22 @@ def load_inventory():
     """
 
     try:
+
         df = pd.read_sql(query, engine)
         df.columns = df.columns.str.lower()
+
         return df
 
     except Exception as e:
+
         print("Inventory load error:", e)
+
         return pd.DataFrame(
             columns=["ingredient_name","remaining","unit"]
         )
-@st.cache_data
+
+
+@st.cache_data(ttl=60)
 def load_purchases():
 
     try:
@@ -141,18 +156,38 @@ def load_purchases():
         return pd.DataFrame()
 
 
-@st.cache_data
+# -------------------------------------------------
+# INGREDIENT USAGE (FROM BOM)
+# -------------------------------------------------
+
+@st.cache_data(ttl=60)
 def load_usage():
+
+    query = """
+    SELECT
+        i.ingredient_name,
+        SUM(b.quantity * s.orders) AS quantity_used
+    FROM dish_bom b
+    JOIN menu_sales s
+    ON b.item_id = s.item_id
+    JOIN ingredients i
+    ON b.ingredient_id = i.ingredient_id
+    GROUP BY i.ingredient_name
+    """
 
     try:
 
-        df = pd.read_sql("SELECT * FROM inventory_usage", engine)
+        df = pd.read_sql(query, engine)
+
+        df.columns = df.columns.str.lower()
 
         return df
 
     except:
 
-        return pd.DataFrame()
+        return pd.DataFrame(
+            columns=["ingredient_name","quantity_used"]
+        )
 
 
 # -------------------------------------------------
@@ -231,7 +266,6 @@ with tabs[1]:
             st.warning("⚠ Low Stock Ingredients")
 
             st.dataframe(low_stock)
-
 
     # INGREDIENT CONSUMPTION
 
