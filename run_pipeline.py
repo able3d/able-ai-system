@@ -1,7 +1,14 @@
+from google_drive_etl import download_all_files
+from parse_invoices import parse_invoices
+from parse_receipts import parse_receipts
+
 from sqlalchemy import create_engine, text
 import os
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")
+
+LOCAL_DATA_FOLDER = "data"
 
 engine = create_engine(DATABASE_URL)
 
@@ -13,14 +20,6 @@ engine = create_engine(DATABASE_URL)
 def init_db():
 
     with engine.connect() as conn:
-        conn.execute(text("DROP TABLE IF EXISTS inventory CASCADE"))
-        conn.execute(text("DROP TABLE IF EXISTS dish_bom CASCADE"))
-        conn.execute(text("DROP TABLE IF EXISTS menu_sales CASCADE"))
-        conn.execute(text("DROP TABLE IF EXISTS purchases CASCADE"))
-
-        # -----------------------------
-        # MENU ITEMS
-        # -----------------------------
 
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS menu_items (
@@ -28,15 +27,6 @@ def init_db():
             item_name TEXT UNIQUE
         )
         """))
-
-        conn.execute(text("""
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_menu_item
-        ON menu_items(item_name)
-        """))
-
-        # -----------------------------
-        # INGREDIENTS
-        # -----------------------------
 
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS ingredients (
@@ -47,15 +37,6 @@ def init_db():
         """))
 
         conn.execute(text("""
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_ingredient
-        ON ingredients(ingredient_name)
-        """))
-
-        # -----------------------------
-        # DISH BOM
-        # -----------------------------
-
-        conn.execute(text("""
         CREATE TABLE IF NOT EXISTS dish_bom (
             bom_id SERIAL PRIMARY KEY,
             item_id INTEGER REFERENCES menu_items(item_id),
@@ -64,35 +45,21 @@ def init_db():
         )
         """))
 
-
-        # INVENTORY
         conn.execute(text("""
-        DROP TABLE IF EXISTS inventory CASCADE
-        """))
-
-        conn.execute(text("""
-        CREATE TABLE inventory (
+        CREATE TABLE IF NOT EXISTS inventory (
             ingredient_id INTEGER PRIMARY KEY REFERENCES ingredients(ingredient_id),
             quantity FLOAT
         )
         """))
 
-        # -----------------------------
-        # MENU SALES
-        # -----------------------------
-
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS menu_sales (
             sale_id SERIAL PRIMARY KEY,
             item_id INTEGER REFERENCES menu_items(item_id),
-            orders INTEGER DEFAULT 0,
-            revenue FLOAT DEFAULT 0
+            orders INTEGER,
+            revenue FLOAT
         )
         """))
-
-        # -----------------------------
-        # PURCHASES
-        # -----------------------------
 
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS purchases (
@@ -109,121 +76,27 @@ def init_db():
 
 
 # --------------------------------------------------
-# SEED DATA
+# GOOGLE DRIVE ETL
 # --------------------------------------------------
 
-def seed_data():
+def run_drive_etl():
 
-    with engine.connect() as conn:
+    if not DRIVE_FOLDER_ID:
+        print("No Google Drive folder configured")
+        return
 
-        # -----------------------------
-        # MENU
-        # -----------------------------
+    print("Downloading files from Google Drive...")
 
-        conn.execute(text("""
-        INSERT INTO menu_items (item_name)
-        VALUES
-        ('Doro Wat'),
-        ('Kitfo'),
-        ('Shiro'),
-        ('Tibs'),
-        ('Veggie Combo')
-        ON CONFLICT (item_name) DO NOTHING
-        """))
+    download_all_files(
+        DRIVE_FOLDER_ID,
+        LOCAL_DATA_FOLDER
+    )
 
-        # -----------------------------
-        # INGREDIENTS
-        # -----------------------------
+    print("Parsing invoices...")
+    parse_invoices(LOCAL_DATA_FOLDER, engine)
 
-        conn.execute(text("""
-        INSERT INTO ingredients (ingredient_name, unit)
-        VALUES
-        ('chicken','g'),
-        ('beef','g'),
-        ('lentils','g'),
-        ('onion','g'),
-        ('berbere','g'),
-        ('butter','g'),
-        ('garlic','g'),
-        ('injera','pcs')
-        ON CONFLICT (ingredient_name) DO NOTHING
-        """))
-
-        # -----------------------------
-        # INITIAL INVENTORY
-        # -----------------------------
-
-        conn.execute(text("""
-        INSERT INTO inventory (ingredient_id, quantity)
-        SELECT ingredient_id, 5000
-        FROM ingredients
-        ON CONFLICT (ingredient_id) DO NOTHING
-        """))
-
-        # -----------------------------
-        # MENU SALES INIT
-        # -----------------------------
-
-        conn.execute(text("""
-        INSERT INTO menu_sales (item_id, orders, revenue)
-        SELECT
-            item_id,
-            FLOOR(random()*20)+5 AS orders,
-            (FLOOR(random()*20)+5) * 15 AS revenue
-        FROM menu_items
-        ON CONFLICT DO NOTHING
-        """))
-
-        conn.commit()
-
-
-# --------------------------------------------------
-# CREATE DISH BOM
-# --------------------------------------------------
-
-def create_bom():
-
-    with engine.connect() as conn:
-
-        # Clear existing BOM
-        conn.execute(text("DELETE FROM dish_bom"))
-
-        # DORO WAT
-        conn.execute(text("""
-        INSERT INTO dish_bom (item_id, ingredient_id, quantity)
-        SELECT m.item_id, i.ingredient_id, 500
-        FROM menu_items m, ingredients i
-        WHERE m.item_name='Doro Wat'
-        AND i.ingredient_name='chicken'
-        """))
-
-        conn.execute(text("""
-        INSERT INTO dish_bom (item_id, ingredient_id, quantity)
-        SELECT m.item_id, i.ingredient_id, 100
-        FROM menu_items m, ingredients i
-        WHERE m.item_name='Doro Wat'
-        AND i.ingredient_name='onion'
-        """))
-
-        # KITFO
-        conn.execute(text("""
-        INSERT INTO dish_bom (item_id, ingredient_id, quantity)
-        SELECT m.item_id, i.ingredient_id, 300
-        FROM menu_items m, ingredients i
-        WHERE m.item_name='Kitfo'
-        AND i.ingredient_name='beef'
-        """))
-
-        # SHIRO
-        conn.execute(text("""
-        INSERT INTO dish_bom (item_id, ingredient_id, quantity)
-        SELECT m.item_id, i.ingredient_id, 200
-        FROM menu_items m, ingredients i
-        WHERE m.item_name='Shiro'
-        AND i.ingredient_name='lentils'
-        """))
-
-        conn.commit()
+    print("Parsing receipts...")
+    parse_receipts(LOCAL_DATA_FOLDER, engine)
 
 
 # --------------------------------------------------
@@ -261,11 +134,8 @@ def run_pipeline():
     print("Initializing database...")
     init_db()
 
-    print("Seeding data...")
-    seed_data()
-
-    print("Creating BOM...")
-    create_bom()
+    print("Running Google Drive ETL...")
+    run_drive_etl()
 
     print("Updating inventory usage...")
     deduct_inventory()
