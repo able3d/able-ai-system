@@ -4,7 +4,7 @@ import plotly.express as px
 import os
 from sqlalchemy import create_engine
 from google_reviews_scraper import scrape_google_reviews
-from run_pipeline import run_pipeline
+import run_pipeline
 
 
 # -------------------------------------------------
