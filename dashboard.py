@@ -5,7 +5,6 @@ import os
 from sqlalchemy import create_engine
 from google_reviews_scraper import scrape_google_reviews
 
-
 # -------------------------------------------------
 # PAGE CONFIG
 # -------------------------------------------------
@@ -15,6 +14,20 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="collapsed"
 )
+
+# -------------------------------------------------
+# HERO IMAGE
+# -------------------------------------------------
+
+st.image(
+    "https://images.unsplash.com/photo-1604908176997-125f25cc6f3d",
+    use_container_width=True
+)
+
+st.markdown("""
+# 🍽 Able AI Restaurant Intelligence
+Track **inventory, menu performance, competitor demand, and restaurant trends** in real time.
+""")
 
 # -------------------------------------------------
 # IPHONE FULLSCREEN SUPPORT
@@ -28,7 +41,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------
-# MOBILE UI
+# MODERN MOBILE UI
 # -------------------------------------------------
 
 st.markdown("""
@@ -40,26 +53,29 @@ header {visibility:hidden;}
 
 .block-container{
 padding-top:1rem;
-max-width:650px;
+max-width:800px;
 }
 
 [data-testid="metric-container"]{
-background-color:#111;
-border-radius:12px;
-padding:15px;
+background:linear-gradient(135deg,#1c1c1c,#2a2a2a);
+border-radius:15px;
+padding:20px;
 border:1px solid #333;
+}
+
+img{
+border-radius:12px;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------
-# DATABASE
+# DATABASE CONNECTION
 # -------------------------------------------------
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL)
-
 
 # -------------------------------------------------
 # DATA LOADERS
@@ -118,24 +134,19 @@ def load_purchases():
 
 
 # -------------------------------------------------
-# GOOGLE REVIEWS SCRAPER (TOP 3 RESTAURANTS)
+# GOOGLE REVIEWS SCRAPER
 # -------------------------------------------------
-
 
 @st.cache_data(ttl=3600)
 def load_competitors():
 
-    from google_reviews_scraper import scrape_google_reviews
-
     data = scrape_google_reviews()
 
-    return data["restaurants"], data["dishes"]
+    restaurants = data["restaurants"]
+    dishes = data["dishes"]
 
-# -------------------------------------------------
-# HEADER
-# -------------------------------------------------
+    return restaurants, dishes
 
-st.markdown("# 🍽 Able AI Restaurant Intelligence")
 
 # -------------------------------------------------
 # TABS
@@ -161,11 +172,15 @@ with tabs[0]:
     revenue = menu["revenue"].sum()
     orders = menu["orders"].sum()
 
+    st.markdown("## Restaurant Performance")
+
     col1, col2, col3 = st.columns(3)
 
-    col1.metric("Revenue", f"${revenue:,.0f}")
-    col2.metric("Orders", int(orders))
-    col3.metric("Menu Items", menu["item_name"].nunique())
+    col1.metric("💰 Revenue", f"${revenue:,.0f}")
+    col2.metric("🍽 Orders", int(orders))
+    col3.metric("📋 Menu Items", menu["item_name"].nunique())
+
+    st.markdown("---")
 
     fig = px.bar(
         menu,
@@ -175,6 +190,29 @@ with tabs[0]:
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("## Popular Ethiopian Dishes")
+
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        st.image(
+            "https://upload.wikimedia.org/wikipedia/commons/3/3b/Doro_Wat.jpg",
+            caption="Doro Wat"
+        )
+
+    with c2:
+        st.image(
+            "https://upload.wikimedia.org/wikipedia/commons/8/86/Kitfo.jpg",
+            caption="Kitfo"
+        )
+
+    with c3:
+        st.image(
+            "https://upload.wikimedia.org/wikipedia/commons/e/e8/Shiro_wat.jpg",
+            caption="Shiro"
+        )
+
 
 # =================================================
 # INVENTORY
@@ -204,8 +242,8 @@ with tabs[1]:
         if not low_stock.empty:
 
             st.error("⚠ Low Inventory Warning")
-
             st.dataframe(low_stock)
+
 
 # =================================================
 # PURCHASES
@@ -232,6 +270,7 @@ with tabs[2]:
 
         st.dataframe(purchases)
 
+
 # =================================================
 # MENU ANALYTICS
 # =================================================
@@ -249,13 +288,14 @@ with tabs[3]:
 
     st.plotly_chart(fig, use_container_width=True)
 
+
 # =================================================
 # COMPETITION INTELLIGENCE
 # =================================================
 
 with tabs[4]:
 
-    st.subheader("Top Ethiopian Restaurants in NYC")
+    st.subheader("🏆 Ethiopian Restaurant Intelligence")
 
     restaurants, dishes = load_competitors()
 
@@ -269,30 +309,14 @@ with tabs[4]:
             restaurants,
             x="Restaurant",
             y="Rating",
-            title="Top Rated Ethiopian Restaurants"
+            title="Top Ethiopian Restaurants in NYC"
         )
 
         st.plotly_chart(fig, use_container_width=True)
 
         st.dataframe(restaurants)
 
-    if not dishes.empty:
-
-        st.subheader("Most Mentioned Dishes in Reviews")
-
-        fig2 = px.bar(
-            dishes,
-            x="dish",
-            y="mentions",
-            title="Dish Popularity"
-        )
-
-        st.plotly_chart(fig2, use_container_width=True)
-
-        st.dataframe(dishes)
-    st.subheader("Restaurant Locations")
-
-    if not restaurants.empty:
+        st.markdown("### Restaurant Locations")
 
         fig_map = px.scatter_mapbox(
             restaurants,
@@ -311,6 +335,21 @@ with tabs[4]:
 
         st.plotly_chart(fig_map, use_container_width=True)
 
+    if not dishes.empty:
+
+        st.subheader("Most Mentioned Dishes in Reviews")
+
+        fig2 = px.bar(
+            dishes,
+            x="dish",
+            y="mentions",
+            title="Dish Popularity"
+        )
+
+        st.plotly_chart(fig2, use_container_width=True)
+
+        st.dataframe(dishes)
+
 
 # =================================================
 # AI INSIGHTS
@@ -322,7 +361,6 @@ with tabs[5]:
 
     menu = load_menu()
     inventory = load_inventory()
-    restaurants, dishes = load_competitors()
 
     if not menu.empty:
 
@@ -339,25 +377,5 @@ with tabs[5]:
         if not low.empty:
 
             st.warning(
-                f"⚠ {low.iloc[0]['ingredient_name']} inventory running low"
+                f"⚠ {len(low)} ingredients running low. Consider reordering."
             )
-
-    if not dishes.empty:
-
-        top_dish = dishes.sort_values(
-            "mentions",
-            ascending=False
-        ).iloc[0]
-
-        st.info(
-            f"📈 Market demand: {top_dish['dish']} trending in competitor reviews"
-        )
-
-    revenue = menu["revenue"].sum()
-
-    predicted = revenue * 1.12
-
-    st.metric(
-        "Predicted Revenue Next Month",
-        f"${predicted:,.0f}"
-    )
