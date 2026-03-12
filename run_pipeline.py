@@ -9,6 +9,10 @@ from sqlalchemy import create_engine, text
 import os
 
 
+# --------------------------------------------------
+# ENVIRONMENT VARIABLES
+# --------------------------------------------------
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 INVOICE_FOLDER_ID = os.getenv("INVOICE_FOLDER_ID")
@@ -16,6 +20,7 @@ RECEIPT_FOLDER_ID = os.getenv("RECEIPT_FOLDER_ID")
 
 INVOICE_FOLDER = "data/invoices"
 RECEIPT_FOLDER = "data/receipts"
+
 
 engine = create_engine(DATABASE_URL)
 
@@ -63,7 +68,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS menu_sales (
             sale_id SERIAL PRIMARY KEY,
             item_id INTEGER REFERENCES menu_items(item_id),
-             orders INTEGER,
+            orders INTEGER,
             revenue FLOAT
         )
         """))
@@ -79,22 +84,26 @@ def init_db():
         )
         """))
 
+        # --------------------------------------------
+        # COMPETITOR TABLES
+        # --------------------------------------------
+
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS competitors (
-        competitor_id SERIAL PRIMARY KEY,
-        restaurant_name TEXT,
-        rating FLOAT,
-        lat FLOAT,
-        lon FLOAT,
-        demand_score INT,
-        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            competitor_id SERIAL PRIMARY KEY,
+            restaurant_name TEXT,
+            rating FLOAT,
+            lat FLOAT,
+            lon FLOAT,
+            demand_score INT,
+            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """))
 
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS competitor_dishes (
-        dish TEXT,
-        mentions INT
+            dish TEXT,
+            mentions INT
         )
         """))
 
@@ -112,9 +121,9 @@ def run_drive_etl():
     os.makedirs(INVOICE_FOLDER, exist_ok=True)
     os.makedirs(RECEIPT_FOLDER, exist_ok=True)
 
-    # -----------------------
+    # ---------------------------------------
     # DOWNLOAD INVOICES
-    # -----------------------
+    # ---------------------------------------
 
     if INVOICE_FOLDER_ID:
 
@@ -132,10 +141,9 @@ def run_drive_etl():
 
         print("INVOICE_FOLDER_ID not configured")
 
-
-    # -----------------------
+    # ---------------------------------------
     # DOWNLOAD RECEIPTS
-    # -----------------------
+    # ---------------------------------------
 
     if RECEIPT_FOLDER_ID:
 
@@ -153,19 +161,35 @@ def run_drive_etl():
 
         print("RECEIPT_FOLDER_ID not configured")
 
-     print("Collecting competitor intelligence...")
+    # ---------------------------------------
+    # COMPETITOR INTELLIGENCE
+    # ---------------------------------------
 
-     data = scrape_google_reviews()
+    print("Collecting competitor intelligence...")
 
-     save_competitor_data(
-     data["restaurants"],
-     data["dishes"]
-     )
+    try:
+
+        data = scrape_google_reviews()
+
+        save_competitor_data(
+            data["restaurants"],
+            data["dishes"]
+        )
+
+        print("Competitor data saved successfully")
+
+    except Exception as e:
+
+        print("Competitor scraping failed:", e)
+
+
 # --------------------------------------------------
 # INVENTORY DEDUCTION
 # --------------------------------------------------
 
 def deduct_inventory():
+
+    print("Updating inventory usage...")
 
     with engine.connect() as conn:
 
@@ -205,11 +229,15 @@ def run_pipeline():
 
     run_drive_etl()
 
-    print("Updating inventory usage...")
     deduct_inventory()
 
     print("Pipeline completed successfully.")
 
 
+# --------------------------------------------------
+# MAIN
+# --------------------------------------------------
+
 if __name__ == "__main__":
+
     run_pipeline()
