@@ -341,7 +341,20 @@ def process_receipts():
 
             print("Error processing", file)
             print(e)
+# ---------
+# --------------------------------------------------
+# PIPELINE ENTRY FUNCTION
+# --------------------------------------------------
 
+def process_all_receipts():
+
+    print("Starting receipt processing pipeline...")
+
+    create_tables(engine)
+    seed_menu()
+    process_receipts()
+
+    print("Receipt processing completed")
 
 # --------------------------------------------------
 # RUN SCRIPT
