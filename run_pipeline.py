@@ -2,6 +2,9 @@ from etl.google_drive_etl import download_all_files
 from parse_invoices import process_all_invoices
 from parse_receipts import process_all_receipts
 
+from google_reviews_scraper import scrape_google_reviews
+from google_reviews_scraper import save_competitor_data
+
 from sqlalchemy import create_engine, text
 import os
 
@@ -150,7 +153,14 @@ def run_drive_etl():
 
         print("RECEIPT_FOLDER_ID not configured")
 
+     print("Collecting competitor intelligence...")
 
+     data = scrape_google_reviews()
+
+     save_competitor_data(
+     data["restaurants"],
+     data["dishes"]
+     )
 # --------------------------------------------------
 # INVENTORY DEDUCTION
 # --------------------------------------------------
