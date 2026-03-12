@@ -1,44 +1,38 @@
-from etl.google_drive_etl import download_all_files
-import parse_invoices
-import parse_receipts
-
 from sqlalchemy import create_engine, text
-import pandas as pd
 import os
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(DATABASE_URL)
 
-print("Pipeline starting...")
 
-
-# -------------------------
+# --------------------------------------------------
 # INIT DATABASE
-# -------------------------
+# --------------------------------------------------
 
 def init_db():
 
     with engine.connect() as conn:
 
+        # -----------------------------
+        # MENU ITEMS
+        # -----------------------------
+
         conn.execute(text("""
-        DROP TABLE IF EXISTS menu_items CASCADE
+        CREATE TABLE IF NOT EXISTS menu_items (
+            item_id SERIAL PRIMARY KEY,
+            item_name TEXT UNIQUE
+        )
         """))
 
         conn.execute(text("""
-        CREATE TABLE menu_items (
-        item_id SERIAL PRIMARY KEY,
-        item_name TEXT UNIQUE
-        )
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_menu_item
+        ON menu_items(item_name)
         """))
-        conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS menu_sales (
-            sale_id SERIAL PRIMARY KEY,
-            item_id INTEGER REFERENCES menu_items(item_id),
-            orders INTEGER,
-            revenue FLOAT
-        )
-        """))
+
+        # -----------------------------
+        # INGREDIENTS
+        # -----------------------------
 
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS ingredients (
@@ -49,44 +43,76 @@ def init_db():
         """))
 
         conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS purchases (
-            purchase_id SERIAL PRIMARY KEY,
-            ingredient_name TEXT,
-            quantity FLOAT,
-            price FLOAT,
-            purchase_date DATE
-        )
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_ingredient
+        ON ingredients(ingredient_name)
         """))
+
+        # -----------------------------
+        # DISH BOM
+        # -----------------------------
 
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS dish_bom (
             bom_id SERIAL PRIMARY KEY,
             item_id INTEGER REFERENCES menu_items(item_id),
-            ingredient_name TEXT,
-            quantity FLOAT,
-            unit TEXT
+            ingredient_id INTEGER REFERENCES ingredients(ingredient_id),
+            quantity FLOAT
         )
         """))
 
+        # -----------------------------
+        # INVENTORY
+        # -----------------------------
+
         conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS inventory_usage (
+        CREATE TABLE IF NOT EXISTS inventory (
+            ingredient_id INTEGER PRIMARY KEY REFERENCES ingredients(ingredient_id),
+            quantity FLOAT
+        )
+        """))
+
+        # -----------------------------
+        # MENU SALES
+        # -----------------------------
+
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS menu_sales (
+            sale_id SERIAL PRIMARY KEY,
+            item_id INTEGER REFERENCES menu_items(item_id),
+            orders INTEGER DEFAULT 0,
+            revenue FLOAT DEFAULT 0
+        )
+        """))
+
+        # -----------------------------
+        # PURCHASES
+        # -----------------------------
+
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS purchases (
+            purchase_id SERIAL PRIMARY KEY,
             ingredient_name TEXT,
-            quantity_used FLOAT
+            quantity FLOAT,
+            unit TEXT,
+            price FLOAT,
+            purchase_date DATE
         )
         """))
 
         conn.commit()
 
-    print("Database ready")
 
+# --------------------------------------------------
+# SEED DATA
+# --------------------------------------------------
 
-# -------------------------
-# SEED MENU
-# -------------------------
-
-def seed_menu():
+def seed_data():
 
     with engine.connect() as conn:
+
+        # -----------------------------
+        # MENU
+        # -----------------------------
 
         conn.execute(text("""
         INSERT INTO menu_items (item_name)
@@ -99,16 +125,9 @@ def seed_menu():
         ON CONFLICT (item_name) DO NOTHING
         """))
 
-        conn.commit()
-
-
-# -------------------------
-# SEED INGREDIENTS
-# -------------------------
-
-def seed_ingredients():
-
-    with engine.connect() as conn:
+        # -----------------------------
+        # INGREDIENTS
+        # -----------------------------
 
         conn.execute(text("""
         INSERT INTO ingredients (ingredient_name, unit)
@@ -124,172 +143,122 @@ def seed_ingredients():
         ON CONFLICT (ingredient_name) DO NOTHING
         """))
 
-        conn.commit()
-
-
-# -------------------------
-# SEED BOM
-# -------------------------
-
-def seed_bom():
-
-    with engine.connect() as conn:
+        # -----------------------------
+        # INITIAL INVENTORY
+        # -----------------------------
 
         conn.execute(text("""
+        INSERT INTO inventory (ingredient_id, quantity)
+        SELECT ingredient_id, 5000
+        FROM ingredients
+        ON CONFLICT (ingredient_id) DO NOTHING
+        """))
 
-        INSERT INTO dish_bom (item_id, ingredient_name, quantity, unit)
+        # -----------------------------
+        # MENU SALES INIT
+        # -----------------------------
 
-        SELECT item_id,'chicken',500,'g'
-        FROM menu_items WHERE item_name='Doro Wat'
-
-        UNION ALL
-        SELECT item_id,'onion',200,'g'
-        FROM menu_items WHERE item_name='Doro Wat'
-
-        UNION ALL
-        SELECT item_id,'berbere',30,'g'
-        FROM menu_items WHERE item_name='Doro Wat'
-
-        UNION ALL
-        SELECT item_id,'butter',40,'g'
-        FROM menu_items WHERE item_name='Doro Wat'
-
-        UNION ALL
-        SELECT item_id,'injera',2,'pcs'
-        FROM menu_items WHERE item_name='Doro Wat'
-
+        conn.execute(text("""
+        INSERT INTO menu_sales (item_id, orders, revenue)
+        SELECT item_id, 0, 0
+        FROM menu_items
+        ON CONFLICT DO NOTHING
         """))
 
         conn.commit()
 
 
-# -------------------------
-# INVENTORY PURCHASES
-# -------------------------
+# --------------------------------------------------
+# CREATE DISH BOM
+# --------------------------------------------------
 
-def seed_inventory():
+def create_bom():
 
     with engine.connect() as conn:
 
+        # Clear existing BOM
+        conn.execute(text("DELETE FROM dish_bom"))
+
+        # DORO WAT
         conn.execute(text("""
-        INSERT INTO purchases (ingredient_name, quantity, price, purchase_date)
-        VALUES
-        ('chicken',5000,45,'2026-03-01'),
-        ('beef',3000,50,'2026-03-01'),
-        ('lentils',4000,20,'2026-03-01'),
-        ('onion',2000,10,'2026-03-01'),
-        ('berbere',1000,15,'2026-03-01'),
-        ('butter',500,12,'2026-03-01')
+        INSERT INTO dish_bom (item_id, ingredient_id, quantity)
+        SELECT m.item_id, i.ingredient_id, 500
+        FROM menu_items m, ingredients i
+        WHERE m.item_name='Doro Wat'
+        AND i.ingredient_name='chicken'
+        """))
+
+        conn.execute(text("""
+        INSERT INTO dish_bom (item_id, ingredient_id, quantity)
+        SELECT m.item_id, i.ingredient_id, 100
+        FROM menu_items m, ingredients i
+        WHERE m.item_name='Doro Wat'
+        AND i.ingredient_name='onion'
+        """))
+
+        # KITFO
+        conn.execute(text("""
+        INSERT INTO dish_bom (item_id, ingredient_id, quantity)
+        SELECT m.item_id, i.ingredient_id, 300
+        FROM menu_items m, ingredients i
+        WHERE m.item_name='Kitfo'
+        AND i.ingredient_name='beef'
+        """))
+
+        # SHIRO
+        conn.execute(text("""
+        INSERT INTO dish_bom (item_id, ingredient_id, quantity)
+        SELECT m.item_id, i.ingredient_id, 200
+        FROM menu_items m, ingredients i
+        WHERE m.item_name='Shiro'
+        AND i.ingredient_name='lentils'
         """))
 
         conn.commit()
 
 
-# -------------------------
-# AUTOMATIC INVENTORY USAGE
-# -------------------------
+# --------------------------------------------------
+# INVENTORY DEDUCTION
+# --------------------------------------------------
 
-def update_inventory_from_sales():
+def deduct_inventory():
 
-    print("Calculating ingredient usage...")
+    with engine.connect() as conn:
 
-    usage_query = """
-    SELECT
-        b.ingredient_name,
-        SUM(b.quantity * s.orders) AS quantity_used
-    FROM dish_bom b
-    JOIN menu_sales s
-    ON b.item_id = s.item_id
-    GROUP BY b.ingredient_name
-    """
+        conn.execute(text("""
+        UPDATE inventory
+        SET quantity = quantity - usage.total_used
+        FROM (
+            SELECT
+                b.ingredient_id,
+                SUM(b.quantity * s.orders) AS total_used
+            FROM dish_bom b
+            JOIN menu_sales s
+            ON b.item_id = s.item_id
+            GROUP BY b.ingredient_id
+        ) usage
+        WHERE inventory.ingredient_id = usage.ingredient_id
+        """))
 
-    usage_df = pd.read_sql(usage_query, engine)
-
-    usage_df.to_sql(
-        "inventory_usage",
-        engine,
-        if_exists="replace",
-        index=False
-    )
-
-    print("Inventory usage updated")
+        conn.commit()
 
 
-# -------------------------
-# DEMAND HEATMAP
-# -------------------------
-
-def generate_demand_heatmap():
-
-    demand_query = """
-    SELECT m.item_name, SUM(s.revenue) as revenue
-    FROM menu_sales s
-    JOIN menu_items m
-    ON s.item_id = m.item_id
-    GROUP BY m.item_name
-    """
-
-    df = pd.read_sql(demand_query, engine)
-
-    df.to_sql(
-        "demand_heatmap",
-        engine,
-        if_exists="replace",
-        index=False
-    )
-
-
-# -------------------------
-# MAIN PIPELINE
-# -------------------------
+# --------------------------------------------------
+# RUN PIPELINE
+# --------------------------------------------------
 
 def run_pipeline():
 
-    print("STEP 1 INIT DB")
+    print("Initializing database...")
     init_db()
 
-    print("STEP 2 SEED MENU")
-    seed_menu()
+    print("Seeding data...")
+    seed_data()
 
-    print("STEP 3 SEED INGREDIENTS")
-    seed_ingredients()
+    print("Creating BOM...")
+    create_bom()
 
-    print("STEP 4 SEED BOM")
-    seed_bom()
+    print("Updating inventory usage...")
+    deduct_inventory()
 
-    print("STEP 5 SEED INVENTORY")
-    seed_inventory()
-
-    print("STEP 6 DOWNLOAD DATA")
-
-    download_all_files(
-        "1mLUXpBHo6ki0kICoPLHpaYYKqGDGEW_u",
-        "data/invoices"
-    )
-
-    download_all_files(
-        "10OsCAFFowvrSENlYIfOTWtBZZ4GxLncE",
-        "data/receipts"
-    )
-
-    print("STEP 7 PARSE INVOICES")
-    parse_invoices.process_all_invoices()
-
-    print("STEP 8 PARSE RECEIPTS")
-    parse_receipts.process_receipts()
-
-    print("STEP 9 INVENTORY DEDUCTION")
-    update_inventory_from_sales()
-
-    print("STEP 10 DEMAND ANALYTICS")
-    generate_demand_heatmap()
-
-    print("Pipeline completed successfully")
-
-
-# -------------------------
-# EXECUTE
-# -------------------------
-
-if __name__ == "__main__":
-    run_pipeline()
+    print("Pipeline completed successfully.")
