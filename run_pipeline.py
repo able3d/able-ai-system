@@ -13,6 +13,10 @@ engine = create_engine(DATABASE_URL)
 def init_db():
 
     with engine.connect() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS inventory CASCADE"))
+        conn.execute(text("DROP TABLE IF EXISTS dish_bom CASCADE"))
+        conn.execute(text("DROP TABLE IF EXISTS menu_sales CASCADE"))
+        conn.execute(text("DROP TABLE IF EXISTS purchases CASCADE"))
 
         # -----------------------------
         # MENU ITEMS
@@ -60,12 +64,14 @@ def init_db():
         )
         """))
 
-        # -----------------------------
+
         # INVENTORY
-        # -----------------------------
+        conn.execute(text("""
+        DROP TABLE IF EXISTS inventory CASCADE
+        """))
 
         conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS inventory (
+        CREATE TABLE inventory (
             ingredient_id INTEGER PRIMARY KEY REFERENCES ingredients(ingredient_id),
             quantity FLOAT
         )
