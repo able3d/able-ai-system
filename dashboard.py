@@ -122,14 +122,16 @@ def load_purchases():
     query = """
     SELECT
         ingredient_name,
-        SUM(quantity) quantity,
-        SUM(price) total_cost
+        SUM(quantity) AS quantity,
+        SUM(price) AS total_cost
     FROM purchases
     GROUP BY ingredient_name
     ORDER BY quantity DESC
     """
 
-    return pd.read_sql(query, engine)
+    df = pd.read_sql(query, engine)
+
+    return df
 
 
 # -------------------------------------------------
