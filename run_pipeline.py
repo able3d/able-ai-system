@@ -3,7 +3,7 @@ from parse_invoices import process_all_invoices
 from parse_receipts import process_all_receipts
 
 from google_reviews_scraper import scrape_google_reviews
-from google_reviews_scraper import save_competitor_data
+
 
 from sqlalchemy import create_engine, text
 import os
@@ -114,55 +114,29 @@ def init_db():
 # GOOGLE DRIVE ETL
 # --------------------------------------------------
 
-def run_drive_etl():
+def run_competitor_etl():
 
-    print("Running Google Drive ETL...")
+    print("Running competitor scraper...")
 
-    os.makedirs(INVOICE_FOLDER, exist_ok=True)
-    os.makedirs(RECEIPT_FOLDER, exist_ok=True)
+    try:
 
-    # -------------------------
-    # INVOICES
-    # -------------------------
+        data = scrape_google_reviews()
 
-    if INVOICE_FOLDER_ID:
+        restaurants = data["restaurants"]
+        dishes = data["dishes"]
 
-        print("Downloading invoices...")
+        print("Restaurants scraped:", len(restaurants))
+        print("Dishes scraped:", len(dishes))
 
-        download_all_files(
-            INVOICE_FOLDER_ID,
-            INVOICE_FOLDER
-        )
+        return restaurants, dishes
 
-        print("Processing invoices...")
-        process_all_invoices()
+    except Exception as e:
 
-    else:
+        print("Competitor scraping failed:", e)
 
-        print("No invoice folder configured")
-
-
-    # -------------------------
-    # RECEIPTS
-    # -------------------------
-
-    if RECEIPT_FOLDER_ID:
-
-        print("Downloading receipts...")
-
-        download_all_files(
-            RECEIPT_FOLDER_ID,
-            RECEIPT_FOLDER
-        )
-
-        print("Processing receipts...")
-        process_all_receipts()
-
-    else:
-
-        print("No receipt folder configured")
-
-
+        return None, None
+    
+      
 # --------------------------------------------------
 # COMPETITOR INTELLIGENCE
 # --------------------------------------------------
