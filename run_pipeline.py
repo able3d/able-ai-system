@@ -4,10 +4,8 @@ from parse_receipts import process_all_receipts
 
 from google_reviews_scraper import scrape_google_reviews
 
-
 from sqlalchemy import create_engine, text
 import os
-from datetime import datetime, timedelta
 
 
 # --------------------------------------------------
@@ -26,6 +24,7 @@ INVOICE_FOLDER = "data/invoices"
 RECEIPT_FOLDER = "data/receipts"
 
 engine = create_engine(DATABASE_URL)
+
 
 # --------------------------------------------------
 # INIT DATABASE
@@ -86,32 +85,49 @@ def init_db():
         )
         """))
 
-        # ---------------------------
-        # COMPETITOR TABLES
-        # ---------------------------
-
-        conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS competitors (
-            competitor_id SERIAL PRIMARY KEY,
-            restaurant_name TEXT,
-            rating FLOAT,
-            lat FLOAT,
-            lon FLOAT,
-            demand_score INT,
-            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """))
-
-        conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS competitor_dishes (
-            dish TEXT,
-            mentions INT
-        )
-        """))
-
 
 # --------------------------------------------------
 # GOOGLE DRIVE ETL
+# --------------------------------------------------
+
+def run_drive_etl():
+
+    print("Running Google Drive ETL...")
+
+    os.makedirs(INVOICE_FOLDER, exist_ok=True)
+    os.makedirs(RECEIPT_FOLDER, exist_ok=True)
+
+    if INVOICE_FOLDER_ID:
+
+        print("Downloading invoices...")
+
+        download_all_files(INVOICE_FOLDER_ID, INVOICE_FOLDER)
+
+        print("Processing invoices...")
+
+        process_all_invoices()
+
+    else:
+
+        print("No invoice folder configured")
+
+    if RECEIPT_FOLDER_ID:
+
+        print("Downloading receipts...")
+
+        download_all_files(RECEIPT_FOLDER_ID, RECEIPT_FOLDER)
+
+        print("Processing receipts...")
+
+        process_all_receipts()
+
+    else:
+
+        print("No receipt folder configured")
+
+
+# --------------------------------------------------
+# COMPETITOR SCRAPER
 # --------------------------------------------------
 
 def run_competitor_etl():
@@ -128,73 +144,10 @@ def run_competitor_etl():
         print("Restaurants scraped:", len(restaurants))
         print("Dishes scraped:", len(dishes))
 
-        return restaurants, dishes
-
     except Exception as e:
 
         print("Competitor scraping failed:", e)
 
-        return None, None
-    
-      
-# --------------------------------------------------
-# COMPETITOR INTELLIGENCE
-# --------------------------------------------------
-def run_competitor_etl():
-
-    print("Checking competitor data freshness...")
-
-    try:
-
-        with engine.connect() as conn:
-
-            result = conn.execute(text("""
-            SELECT MAX(last_updated)
-            FROM competitors
-            """)).scalar()
-
-    except Exception as e:
-
-        print("Error checking competitor table:", e)
-        result = None
-
-
-    # -----------------------------------------
-    # If no data OR older than 24 hours
-    # -----------------------------------------
-
-    if result is None or result < datetime.utcnow() - timedelta(hours=24):
-
-        print("Collecting competitor intelligence...")
-
-        try:
-
-            data = scrape_google_reviews()
-
-            restaurants = data["restaurants"]
-            dishes = data["dishes"]
-
-            print("Restaurants scraped:", len(restaurants))
-            print("Dishes scraped:", len(dishes))
-
-            # Only insert if data exists
-            if not restaurants.empty:
-
-                save_competitor_data(restaurants, dishes)
-
-                print("Competitor data updated successfully")
-
-            else:
-
-                print("No restaurants scraped. Skipping database update.")
-
-        except Exception as e:
-
-            print("Competitor scraping failed:", e)
-
-    else:
-
-        print("Competitor data is recent. Skipping scrape.")
 
 # --------------------------------------------------
 # INVENTORY DEDUCTION
@@ -207,25 +160,18 @@ def deduct_inventory():
     with engine.begin() as conn:
 
         conn.execute(text("""
-
         UPDATE inventory
         SET quantity = quantity - usage.total_used
-
         FROM (
             SELECT
                 b.ingredient_id,
                 SUM(b.quantity * s.orders) AS total_used
-
             FROM dish_bom b
             JOIN menu_sales s
             ON b.item_id = s.item_id
-
             GROUP BY b.ingredient_id
-
         ) usage
-
         WHERE inventory.ingredient_id = usage.ingredient_id
-
         """))
 
 
@@ -239,6 +185,7 @@ def run_pipeline():
     init_db()
 
     print("Running ETL pipelines...")
+
     run_drive_etl()
 
     run_competitor_etl()
