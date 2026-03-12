@@ -22,12 +22,15 @@ def init_db():
     with engine.connect() as conn:
 
         conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS menu_items (
-            item_id SERIAL PRIMARY KEY,
-            item_name TEXT UNIQUE
-        )
+        DROP TABLE IF EXISTS menu_items CASCADE
         """))
 
+        conn.execute(text("""
+        CREATE TABLE menu_items (
+        item_id SERIAL PRIMARY KEY,
+        item_name TEXT UNIQUE
+        )
+        """))
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS menu_sales (
             sale_id SERIAL PRIMARY KEY,
