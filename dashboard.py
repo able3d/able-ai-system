@@ -18,7 +18,7 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
-# MOBILE / PWA SUPPORT (IPHONE FULLSCREEN)
+# PWA / IPHONE FULLSCREEN SUPPORT
 # -------------------------------------------------
 
 st.markdown("""
@@ -26,11 +26,11 @@ st.markdown("""
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Able AI">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/1046/1046784.png">
 """, unsafe_allow_html=True)
 
-
 # -------------------------------------------------
-# CLEAN UI
+# UI STYLING
 # -------------------------------------------------
 
 st.markdown("""
@@ -142,10 +142,6 @@ def load_usage():
     return pd.read_sql(query, engine)
 
 
-# -------------------------------------------------
-# FAST COMPETITOR DATA
-# -------------------------------------------------
-
 @st.cache_data(ttl=3600)
 def get_competitor_data():
 
@@ -164,6 +160,7 @@ st.markdown(
 """,
 unsafe_allow_html=True
 )
+
 
 # -------------------------------------------------
 # NAVIGATION
@@ -194,9 +191,9 @@ with tabs[0]:
 
     st.metric("Menu Items", menu["item_name"].nunique())
 
-    fig = px.bar(menu, x="item_name", y="revenue")
+    fig = px.bar(menu, x="item_name", y="revenue", title="Menu Revenue")
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="dashboard_revenue")
 
 
 # =====================================================
@@ -213,9 +210,14 @@ with tabs[1]:
 
     else:
 
-        fig = px.bar(inventory, x="ingredient_name", y="remaining")
+        fig = px.bar(
+            inventory,
+            x="ingredient_name",
+            y="remaining",
+            title="Remaining Inventory"
+        )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="inventory_chart")
 
         low_stock = inventory[inventory["remaining"] < 500]
 
@@ -225,14 +227,18 @@ with tabs[1]:
 
             st.dataframe(low_stock)
 
-
     usage = load_usage()
 
     if not usage.empty:
 
-        fig = px.bar(usage, x="ingredient_name", y="quantity_used")
+        fig = px.bar(
+            usage,
+            x="ingredient_name",
+            y="quantity_used",
+            title="Ingredient Usage"
+        )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="usage_chart")
 
 
 # =====================================================
@@ -249,9 +255,14 @@ with tabs[2]:
 
     else:
 
-        fig = px.bar(purchases, x="ingredient_name", y="quantity")
+        fig = px.bar(
+            purchases,
+            x="ingredient_name",
+            y="quantity",
+            title="Purchased Ingredients"
+        )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="purchases_chart")
 
         st.dataframe(purchases)
 
@@ -264,13 +275,23 @@ with tabs[3]:
 
     menu = load_menu()
 
-    fig = px.bar(menu, x="item_name", y="orders")
+    fig = px.bar(
+        menu,
+        x="item_name",
+        y="orders",
+        title="Most Popular Dishes"
+    )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="menu_orders_chart")
 
-    fig2 = px.bar(menu, x="item_name", y="revenue")
+    fig2 = px.bar(
+        menu,
+        x="item_name",
+        y="revenue",
+        title="Revenue by Dish"
+    )
 
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig2, use_container_width=True, key="menu_revenue_chart")
 
 
 # =====================================================
@@ -284,16 +305,12 @@ with tabs[4]:
     menu = load_menu()
     inventory = load_inventory()
 
-    # TOP DISH
     if not menu.empty:
 
         top = menu.sort_values("orders", ascending=False).iloc[0]
 
-        st.success(
-            f"🔥 **{top['item_name']}** is your most popular dish."
-        )
+        st.success(f"🔥 {top['item_name']} is your most popular dish")
 
-    # LOW INVENTORY PREDICTION
     if not inventory.empty:
 
         low = inventory[inventory["remaining"] < 300]
@@ -301,19 +318,16 @@ with tabs[4]:
         if not low.empty:
 
             st.error(
-                f"⚠ {low.iloc[0]['ingredient_name']} may run out soon."
+                f"⚠ {low.iloc[0]['ingredient_name']} may run out soon"
             )
 
-    # REVENUE INSIGHT
     revenue = menu["revenue"].sum()
 
     if revenue < 1000:
 
         st.info(
-            "💡 Increasing combo meals could improve average order value."
+            "💡 Consider combo meals to increase average order value"
         )
-
-    # SIMPLE FORECAST
 
     if not menu.empty:
 
@@ -342,11 +356,7 @@ with tabs[5]:
         restaurants = data["restaurants"]
         dishes = data["dishes"]
 
-        # MAP
-
         if not restaurants.empty:
-
-            st.subheader("Restaurant Locations")
 
             fig = px.scatter_mapbox(
                 restaurants,
@@ -360,9 +370,7 @@ with tabs[5]:
 
             fig.update_layout(mapbox_style="open-street-map")
 
-            st.plotly_chart(fig, use_container_width=True)
-
-        # TOP RESTAURANTS
+            st.plotly_chart(fig, use_container_width=True, key="competitor_map")
 
         st.subheader("Top Rated Restaurants")
 
@@ -373,9 +381,7 @@ with tabs[5]:
 
         st.dataframe(top_rest)
 
-        # TOP DISHES
-
-        st.subheader("Most Mentioned Dishes")
+        st.subheader("Trending Dishes Nearby")
 
         top_dishes = dishes.sort_values(
             "mentions",
@@ -388,10 +394,10 @@ with tabs[5]:
             y="mentions"
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="competitor_dishes")
 
         if not top_dishes.empty:
 
             st.success(
-                f"Opportunity: **{top_dishes.iloc[0]['dish']}** is trending nearby."
+                f"Opportunity: {top_dishes.iloc[0]['dish']} is trending nearby"
             )
