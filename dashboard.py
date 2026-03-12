@@ -278,12 +278,11 @@ with tabs[3]:
 # =================================================
 # COMPETITION INTELLIGENCE
 # =================================================
-
 with tabs[4]:
 
     st.subheader("Nearby Ethiopian Restaurant Intelligence")
 
-    restaurants, dishes = load_competitors()
+    restaurants, dishes = scrape_google_reviews()
 
     if restaurants.empty:
 
@@ -300,7 +299,7 @@ with tabs[4]:
             title="Top Rated Ethiopian Restaurants"
         )
 
-        st.plotly_chart(fig, use_container_width=True, key="competitor_chart")
+        st.plotly_chart(fig, use_container_width=True)
 
         st.dataframe(restaurants)
 
@@ -315,7 +314,7 @@ with tabs[4]:
             title="Dish Popularity From Reviews"
         )
 
-        st.plotly_chart(fig2, use_container_width=True, key="dish_mentions")
+        st.plotly_chart(fig2, use_container_width=True)
 
         st.dataframe(dishes)
 
@@ -323,15 +322,9 @@ with tabs[4]:
 
         st.markdown("### Restaurant Locations")
 
-
         map_df = restaurants.rename(
-            columns={
-                "lat": "latitude",
-                "lon": "longitude"
-            }
+            columns={"lat": "latitude", "lon": "longitude"}
         )
-
-        map_df = map_df.dropna(subset=["latitude", "longitude"])
 
         st.map(map_df)
 
