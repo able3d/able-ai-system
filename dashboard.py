@@ -15,7 +15,13 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="collapsed"
 )
-
+st.markdown("""
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Able AI">
+<link rel="apple-touch-icon" href="https://raw.githubusercontent.com/YOUR_GITHUB/able-ai/main/images/app_icon.png">
+""", unsafe_allow_html=True)
 # -------------------------------------------------
 # HERO IMAGE
 # -------------------------------------------------
@@ -33,6 +39,18 @@ Track **inventory, menu performance, competitor demand, and restaurant trends** 
 # -------------------------------------------------
 # MOBILE / UI STYLE
 # -------------------------------------------------
+st.markdown("""
+<style>
+header {visibility: hidden;}
+footer {visibility: hidden;}
+#MainMenu {visibility: hidden;}
+
+.block-container {
+    max-width: 100%;
+    padding: 1rem;
+}
+</style>
+""", unsafe_allow_html=True)
 
 st.markdown("""
 <style>
