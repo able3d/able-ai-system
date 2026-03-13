@@ -1,8 +1,8 @@
 import os
 import pdfplumber
 import shutil
+import re
 from sqlalchemy import create_engine, text
-import pandas as pd
 
 # --------------------------------------------------
 # FOLDERS
@@ -11,45 +11,24 @@ import pandas as pd
 RECEIPT_FOLDER = "data/receipts"
 PROCESSED_FOLDER = "data/processed_receipts"
 
+os.makedirs(RECEIPT_FOLDER, exist_ok=True)
 os.makedirs(PROCESSED_FOLDER, exist_ok=True)
 
 # --------------------------------------------------
-# DATABASE CONNECTION
+# DATABASE
 # --------------------------------------------------
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable not set")
+
 engine = create_engine(DATABASE_URL)
 
-
-def load_csv_receipts():
-
-    folder = "data/receipts"
-
-    for file in os.listdir(folder):
-
-        df = pd.read_csv(os.path.join(folder, file))
-
-        df.rename(columns={
-            "Item": "item_name",
-            "Quantity": "quantity",
-            "Price": "price"
-        }, inplace=True)
-
-        df.to_sql(
-            "receipts",
-            engine,
-            if_exists="append",
-            index=False
-        )
-
-        print("Inserted receipt data:", file)
 
 # --------------------------------------------------
 # EXTRACT ITEMS FROM RECEIPT TEXT
 # --------------------------------------------------
-
-import re
 
 def extract_items(text):
 
@@ -64,219 +43,108 @@ def extract_items(text):
         if not line:
             continue
 
-        # -----------------------------------
-        # Pattern 1: "2 Doro Wat 15.99"
-        # -----------------------------------
+        # Pattern: 2 Doro Wat 15.99
 
         match = re.search(r"(\d+)\s+(.+?)\s+\$?(\d+\.\d{2})", line)
 
         if match:
 
-            quantity = int(match.group(1))
-            name = match.group(2).strip()
-            price = float(match.group(3))
-
             items.append({
-                "name": name,
-                "quantity": quantity,
-                "price": price
+                "name": match.group(2).strip(),
+                "quantity": int(match.group(1)),
+                "price": float(match.group(3))
             })
 
             continue
 
-
-        # -----------------------------------
-        # Pattern 2: "Doro Wat 15.99"
-        # -----------------------------------
+        # Pattern: Doro Wat 15.99
 
         match = re.search(r"(.+?)\s+\$?(\d+\.\d{2})", line)
 
         if match:
 
-            name = match.group(1).strip()
-            price = float(match.group(2))
-
             items.append({
-                "name": name,
+                "name": match.group(1).strip(),
                 "quantity": 1,
-                "price": price
+                "price": float(match.group(2))
             })
-
-            continue
 
     return items
 
 
 # --------------------------------------------------
-# INSERT SALE INTO DATABASE
+# INSERT OR UPDATE SALES (UPSERT)
 # --------------------------------------------------
 
-def insert_sale(item):
+def upsert_sale(item):
 
-    query = text("""
-        INSERT INTO receipts (item_name, quantity, price)
-        VALUES (:name, :quantity, :price)
-    """)
+    with engine.begin() as conn:
 
-    with engine.connect() as conn:
+        # -----------------------------------
+        # Ensure menu item exists
+        # -----------------------------------
 
-        conn.execute(query, {
-            "name": item["name"],
-            "quantity": item["quantity"],
-            "price": item["price"]
+        conn.execute(text("""
+        INSERT INTO menu_items (item_name)
+        VALUES (:name)
+        ON CONFLICT (item_name) DO NOTHING
+        """), {"name": item["name"]})
+
+        # -----------------------------------
+        # Get item_id
+        # -----------------------------------
+
+        result = conn.execute(text("""
+        SELECT item_id
+        FROM menu_items
+        WHERE item_name = :name
+        """), {"name": item["name"]})
+
+        row = result.fetchone()
+
+        if not row:
+            print("Menu item not found:", item["name"])
+            return
+
+        item_id = row[0]
+
+        orders = item["quantity"]
+        revenue = item["quantity"] * item["price"]
+
+        # -----------------------------------
+        # UPSERT SALES
+        # -----------------------------------
+
+        conn.execute(text("""
+        INSERT INTO menu_sales (item_id, orders, revenue)
+        VALUES (:item_id, :orders, :revenue)
+        ON CONFLICT (item_id)
+        DO UPDATE SET
+            orders = menu_sales.orders + EXCLUDED.orders,
+            revenue = menu_sales.revenue + EXCLUDED.revenue
+        """), {
+            "item_id": item_id,
+            "orders": orders,
+            "revenue": revenue
         })
 
-        conn.commit()
 
-
-# --------------------------------------------------
-# INVENTORY DEDUCTION ENGINE
-# --------------------------------------------------
-
-def deduct_inventory(dish_name, quantity_sold):
-
-    print("Updating inventory for:", dish_name)
-
-    with engine.connect() as conn:
-
-        # --------------------------------------------------
-        # FIND DISH ID
-        # --------------------------------------------------
-
-        dish_query = text("""
-            SELECT dish_id
-            FROM dishes
-            WHERE LOWER(dish_name) = LOWER(:dish)
-        """)
-
-        dish = conn.execute(dish_query, {"dish": dish_name}).fetchone()
-
-        if not dish:
-            print("Dish not found:", dish_name)
-            return
-
-        dish_id = dish[0]
-
-        # --------------------------------------------------
-        # GET BOM INGREDIENTS
-        # --------------------------------------------------
-
-        bom_query = text("""
-            SELECT ingredient_id, quantity_required
-            FROM bom
-            WHERE dish_id = :dish_id
-        """)
-
-        bom_items = conn.execute(
-            bom_query,
-            {"dish_id": dish_id}
-        ).fetchall()
-
-        if not bom_items:
-            print("No BOM found for:", dish_name)
-            return
-
-        # --------------------------------------------------
-        # DEDUCT INVENTORY
-        # --------------------------------------------------
-
-        for ingredient_id, qty_required in bom_items:
-
-            total_used = qty_required * quantity_sold
-
-            update_query = text("""
-                UPDATE inventory
-                SET stock_quantity = stock_quantity - :used
-                WHERE ingredient_id = :ingredient_id
-            """)
-
-            conn.execute(update_query, {
-                "used": total_used,
-                "ingredient_id": ingredient_id
-            })
-
-        conn.commit()
-
-        print("Inventory updated for", dish_name)
-
-# ------------------------
-def create_tables(engine):
-
-    with engine.connect() as conn:
-
-        conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS dishes (
-            dish_id SERIAL PRIMARY KEY,
-            dish_name TEXT UNIQUE
-        )
-        """))
-
-        conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS receipts (
-            receipt_id SERIAL PRIMARY KEY,
-            item_name TEXT,
-            quantity INT,
-            price FLOAT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """))
-
-        conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS inventory (
-            ingredient_id SERIAL PRIMARY KEY,
-            ingredient_name TEXT,
-            stock_quantity FLOAT
-        )
-        """))
-
-        conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS bom (
-            bom_id SERIAL PRIMARY KEY,
-            dish_id INT,
-            ingredient_id INT,
-            quantity_required FLOAT
-        )
-        """))
-
-        conn.commit()
-
-    print("Database tables created")
-# ---------------------------
-# menu
-# --------------------
-def seed_menu():
-
-    dishes = [
-        "Doro Wat",
-        "Kitfo",
-        "Tibs",
-        "Injera Basket"
-    ]
-
-    with engine.connect() as conn:
-
-        for dish in dishes:
-
-            conn.execute(text("""
-                INSERT INTO dishes (dish_name)
-                VALUES (:dish)
-                ON CONFLICT DO NOTHING
-            """), {"dish": dish})
-
-        conn.commit()
-
-    print("Menu seeded")
 # --------------------------------------------------
 # PROCESS RECEIPTS
 # --------------------------------------------------
 
-def process_receipts():
+def process_all_receipts():
 
-    print("Processing receipts...\n")
+    print("Processing receipts...")
 
-    for file in os.listdir(RECEIPT_FOLDER):
+    files = os.listdir(RECEIPT_FOLDER)
 
-        if not file.endswith(".pdf"):
+    if not files:
+        print("No receipts found")
+
+    for file in files:
+
+        if not file.lower().endswith(".pdf"):
             continue
 
         file_path = os.path.join(RECEIPT_FOLDER, file)
@@ -285,84 +153,51 @@ def process_receipts():
 
         try:
 
-            # --------------------------------------------------
-            # EXTRACT TEXT FROM PDF
-            # --------------------------------------------------
+            text_content = ""
+
+            # -----------------------------------
+            # Extract PDF text
+            # -----------------------------------
 
             with pdfplumber.open(file_path) as pdf:
 
-                text_content = ""
-
                 for page in pdf.pages:
 
-                    page_text = page.extract_text(
-                        x_tolerance=2,
-                        y_tolerance=2
-                    )
+                    text = page.extract_text()
 
-                    if page_text:
-                        text_content += page_text + "\n"
+                    if text:
+                        text_content += text + "\n"
 
-            # --------------------------------------------------
-            # PARSE ITEMS
-            # --------------------------------------------------
+            # -----------------------------------
+            # Parse items
+            # -----------------------------------
 
             items = extract_items(text_content)
 
             print("Items detected:", len(items))
 
-            # --------------------------------------------------
-            # INSERT SALES + UPDATE INVENTORY
-            # --------------------------------------------------
+            # -----------------------------------
+            # Insert sales
+            # -----------------------------------
 
             for item in items:
 
-                insert_sale(item)
+                upsert_sale(item)
 
-                print("Inserted sale:", item["name"])
+                print("Updated sales:", item["name"])
 
-                deduct_inventory(
-                    item["name"],
-                    item["quantity"]
-                )
-
-            # --------------------------------------------------
-            # MOVE FILE AFTER PROCESSING
-            # --------------------------------------------------
+            # -----------------------------------
+            # Move processed receipt
+            # -----------------------------------
 
             shutil.move(
                 file_path,
                 os.path.join(PROCESSED_FOLDER, file)
             )
 
-            print("Moved to processed_receipts\n")
+            print("Receipt processed:", file)
 
         except Exception as e:
 
-            print("Error processing", file)
+            print("Error processing receipt:", file)
             print(e)
-# ---------
-# --------------------------------------------------
-# PIPELINE ENTRY FUNCTION
-# --------------------------------------------------
-
-def process_all_receipts():
-
-    print("Starting receipt processing pipeline...")
-
-    create_tables(engine)
-    seed_menu()
-    process_receipts()
-
-    print("Receipt processing completed")
-
-# --------------------------------------------------
-# RUN SCRIPT
-# --------------------------------------------------
-
-if __name__ == "__main__":
-    print("Creating database tables...")
-
-    create_tables(engine)
-    seed_menu()
-    process_receipts()
