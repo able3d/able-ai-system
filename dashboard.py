@@ -208,30 +208,35 @@ with tabs[0]:
     st.plotly_chart(fig, use_container_width=True)
 
     # Popular dishes images
-
     st.markdown("## Popular Ethiopian Dishes")
 
-    c1, c2, c3 = st.columns(3)
+    menu = load_menu()
 
-    with c1:
-        st.image(
-            "https://images.unsplash.com/photo-1617196038435-6c7d1e4a2b2c",
-            caption="Doro Wat"
-        )
+    dish_images = {
+          "Doro Wat": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Doro_wat.jpg/640px-Doro_wat.jpg",
+          "Kitfo": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9b/Kitfo.jpg/640px-Kitfo.jpg",
+          "Shiro": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Shiro_wot.jpg/640px-Shiro_wot.jpg"
+    }
 
-    with c2:
-        st.image(
-            "https://images.unsplash.com/photo-1604909053196-7b6c6d7d3a8f",
-            caption="Kitfo"
-        )
+    cols = st.columns(3)
 
-    with c3:
-        st.image(
-            "https://images.unsplash.com/photo-1617191517000-2f6b7d7b9e43",
-            caption="Shiro"
-        )
+    for i, dish in enumerate(dish_images):
 
+        with cols[i]:
 
+           st.image(
+               dish_images[dish],
+               caption=dish,
+               use_container_width=True
+           )
+
+           if dish in menu["item_name"].values:
+
+               dish_data = menu[menu["item_name"] == dish].iloc[0]
+
+               st.metric("Orders", int(dish_data["orders"]))
+               st.metric("Revenue", f"${dish_data['revenue']:,.0f}")
+     
 # =================================================
 # INVENTORY
 # =================================================
