@@ -8,12 +8,12 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "https://raw.githubusercontent.com/YOUR_GITHUB/able-ai/main/images/app_icon.png",
+      "src": "https://raw.githubusercontent.com/https://github.com/able3d/able-ai-system/able-ai/main/images/app_icon.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "https://raw.githubusercontent.com/YOUR_GITHUB/able-ai/main/images/app_icon.png",
+      "src": "https://raw.githubusercontent.com/https://github.com/able3d/able-ai-system/able-ai/main/images/app_icon.png",
       "sizes": "512x512",
       "type": "image/png"
     }
