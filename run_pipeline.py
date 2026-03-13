@@ -6,6 +6,7 @@ from google_reviews_scraper import scrape_google_reviews
 
 from sqlalchemy import create_engine, text
 import os
+import shutil
 
 
 # --------------------------------------------------
@@ -94,8 +95,16 @@ def run_drive_etl():
 
     print("Running Google Drive ETL...")
 
+    # Clear old downloaded files
+    shutil.rmtree(INVOICE_FOLDER, ignore_errors=True)
+    shutil.rmtree(RECEIPT_FOLDER, ignore_errors=True)
+
     os.makedirs(INVOICE_FOLDER, exist_ok=True)
     os.makedirs(RECEIPT_FOLDER, exist_ok=True)
+
+    # ---------------------------
+    # INVOICES
+    # ---------------------------
 
     if INVOICE_FOLDER_ID:
 
@@ -105,11 +114,18 @@ def run_drive_etl():
 
         print("Processing invoices...")
 
-        process_all_invoices()
+        try:
+            process_all_invoices(INVOICE_FOLDER)
+        except Exception as e:
+            print("Invoice processing failed:", e)
 
     else:
 
         print("No invoice folder configured")
+
+    # ---------------------------
+    # RECEIPTS
+    # ---------------------------
 
     if RECEIPT_FOLDER_ID:
 
@@ -119,7 +135,10 @@ def run_drive_etl():
 
         print("Processing receipts...")
 
-        process_all_receipts()
+        try:
+            process_all_receipts(RECEIPT_FOLDER)
+        except Exception as e:
+            print("Receipt processing failed:", e)
 
     else:
 
@@ -157,22 +176,28 @@ def deduct_inventory():
 
     print("Updating inventory usage...")
 
-    with engine.begin() as conn:
+    try:
 
-        conn.execute(text("""
-        UPDATE inventory
-        SET quantity = quantity - usage.total_used
-        FROM (
-            SELECT
-                b.ingredient_id,
-                SUM(b.quantity * s.orders) AS total_used
-            FROM dish_bom b
-            JOIN menu_sales s
-            ON b.item_id = s.item_id
-            GROUP BY b.ingredient_id
-        ) usage
-        WHERE inventory.ingredient_id = usage.ingredient_id
-        """))
+        with engine.begin() as conn:
+
+            conn.execute(text("""
+            UPDATE inventory
+            SET quantity = quantity - usage.total_used
+            FROM (
+                SELECT
+                    b.ingredient_id,
+                    SUM(b.quantity * s.orders) AS total_used
+                FROM dish_bom b
+                JOIN menu_sales s
+                ON b.item_id = s.item_id
+                GROUP BY b.ingredient_id
+            ) usage
+            WHERE inventory.ingredient_id = usage.ingredient_id
+            """))
+
+    except Exception as e:
+
+        print("Inventory deduction failed:", e)
 
 
 # --------------------------------------------------
@@ -182,6 +207,7 @@ def deduct_inventory():
 def run_pipeline():
 
     print("Initializing database...")
+
     init_db()
 
     print("Running ETL pipelines...")
