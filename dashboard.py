@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import os
 from sqlalchemy import create_engine
+import run_pipeline
 from google_reviews_scraper import scrape_google_reviews
 
 # -------------------------------------------------
@@ -30,18 +31,7 @@ Track **inventory, menu performance, competitor demand, and restaurant trends** 
 """)
 
 # -------------------------------------------------
-# IPHONE FULLSCREEN SUPPORT
-# -------------------------------------------------
-
-st.markdown("""
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="apple-mobile-web-app-title" content="Able AI">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-""", unsafe_allow_html=True)
-
-# -------------------------------------------------
-# MODERN MOBILE UI
+# MOBILE / UI STYLE
 # -------------------------------------------------
 
 st.markdown("""
@@ -64,24 +54,49 @@ border:1px solid #333;
 }
 
 img{
-border-radius:12px;
+border-radius:14px;
+box-shadow:0 6px 16px rgba(0,0,0,0.4);
 }
 
 </style>
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------
-# DATABASE CONNECTION
+# DATABASE
 # -------------------------------------------------
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    st.error("DATABASE_URL environment variable not set")
+    st.stop()
+
 engine = create_engine(DATABASE_URL)
+
+# -------------------------------------------------
+# RUN PIPELINE
+# -------------------------------------------------
+
+if "pipeline_ran" not in st.session_state:
+
+    with st.spinner("Running data pipeline..."):
+        run_pipeline.run_pipeline()
+
+    st.session_state.pipeline_ran = True
+
+# -------------------------------------------------
+# REFRESH BUTTON
+# -------------------------------------------------
+
+if st.button("🔄 Refresh Dashboard"):
+    st.cache_data.clear()
+    st.rerun()
 
 # -------------------------------------------------
 # DATA LOADERS
 # -------------------------------------------------
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=60)
 def load_menu():
 
     query = """
@@ -98,7 +113,7 @@ def load_menu():
     return pd.read_sql(query, engine)
 
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=60)
 def load_inventory():
 
     query = """
@@ -111,20 +126,19 @@ def load_inventory():
     """
 
     df = pd.read_sql(query, engine)
-
     df["quantity"] = df["quantity"].clip(lower=0)
 
     return df
 
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=60)
 def load_purchases():
 
     query = """
     SELECT
         ingredient_name,
-        SUM(quantity) AS quantity,
-        SUM(price) AS total_cost
+        SUM(quantity) quantity,
+        SUM(price) total_cost
     FROM purchases
     GROUP BY ingredient_name
     ORDER BY quantity DESC
@@ -134,7 +148,7 @@ def load_purchases():
 
 
 # -------------------------------------------------
-# GOOGLE REVIEWS SCRAPER
+# GOOGLE REVIEWS
 # -------------------------------------------------
 
 @st.cache_data(ttl=3600)
@@ -145,21 +159,21 @@ def load_competitors():
     restaurants = data["restaurants"]
     dishes = data["dishes"]
 
-    # Add coordinates so map works
+    # Hard-coded coordinates for stable map
     coords = {
         "Haile": (40.7216, -73.9803),
         "Awaze": (40.7487, -73.9857),
         "Addey Ababa": (40.7262, -73.9845)
     }
 
-    for i, row in restaurants.iterrows():
+    for i,row in restaurants.iterrows():
 
         name = row["Restaurant"]
 
         if name in coords:
 
-            restaurants.loc[i, "lat"] = coords[name][0]
-            restaurants.loc[i, "lon"] = coords[name][1]
+            restaurants.loc[i,"lat"] = coords[name][0]
+            restaurants.loc[i,"lon"] = coords[name][1]
 
     return restaurants, dishes
 
@@ -190,53 +204,25 @@ with tabs[0]:
 
     st.markdown("## Restaurant Performance")
 
-    col1, col2, col3 = st.columns(3)
+    c1,c2,c3 = st.columns(3)
 
-    col1.metric("💰 Revenue", f"${revenue:,.0f}")
-    col2.metric("🍽 Orders", int(orders))
-    col3.metric("📋 Menu Items", menu["item_name"].nunique())
-
-    st.markdown("---")
+    c1.metric("💰 Revenue",f"${revenue:,.0f}")
+    c2.metric("🍽 Orders",int(orders))
+    c3.metric("📋 Menu Items",menu["item_name"].nunique())
 
     fig = px.bar(
         menu,
         x="item_name",
         y="revenue",
+        text="revenue",
         title="Revenue by Dish"
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    fig.update_layout(xaxis_tickangle=-30)
 
-    # Popular dishes images
-    st.markdown("## Popular Ethiopian Dishes")
+    st.plotly_chart(fig,use_container_width=True)
 
-    menu = load_menu()
 
-    dish_images = {
-          "Doro Wat": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Doro_wat.jpg/640px-Doro_wat.jpg",
-          "Kitfo": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9b/Kitfo.jpg/640px-Kitfo.jpg",
-          "Shiro": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Shiro_wot.jpg/640px-Shiro_wot.jpg"
-    }
-
-    cols = st.columns(3)
-
-    for i, dish in enumerate(dish_images):
-
-        with cols[i]:
-
-           st.image(
-               dish_images[dish],
-               caption=dish,
-               use_container_width=True
-           )
-
-           if dish in menu["item_name"].values:
-
-               dish_data = menu[menu["item_name"] == dish].iloc[0]
-
-               st.metric("Orders", int(dish_data["orders"]))
-               st.metric("Revenue", f"${dish_data['revenue']:,.0f}")
-     
 # =================================================
 # INVENTORY
 # =================================================
@@ -246,7 +232,6 @@ with tabs[1]:
     inventory = load_inventory()
 
     if inventory.empty:
-
         st.warning("No inventory data available")
 
     else:
@@ -258,14 +243,15 @@ with tabs[1]:
             title="Remaining Inventory"
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig,use_container_width=True)
 
-        low_stock = inventory[inventory["quantity"] < 200]
+        low = inventory[inventory["quantity"] < 200]
 
-        if not low_stock.empty:
+        if not low.empty:
 
-            st.error("⚠ Low Inventory Warning")
-            st.dataframe(low_stock)
+            st.error("⚠ Low Inventory")
+
+            st.dataframe(low)
 
 
 # =================================================
@@ -277,8 +263,7 @@ with tabs[2]:
     purchases = load_purchases()
 
     if purchases.empty:
-
-        st.info("No purchases found")
+        st.info("No purchase data")
 
     else:
 
@@ -289,42 +274,56 @@ with tabs[2]:
             title="Purchased Ingredients"
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig,use_container_width=True)
 
         st.dataframe(purchases)
 
 
 # =================================================
-# MENU ANALYTICS
+# MENU
 # =================================================
 
 with tabs[3]:
 
+    st.markdown("## 🍽 Popular Ethiopian Dishes")
+
     menu = load_menu()
 
-    fig = px.bar(
-        menu,
-        x="item_name",
-        y="orders",
-        title="Most Popular Dishes"
-    )
+    dish_images = {
+        "Doro Wat":"https://upload.wikimedia.org/wikipedia/commons/3/33/Doro_Wat.jpg",
+        "Kitfo":"https://upload.wikimedia.org/wikipedia/commons/4/4f/Kitfo_Ethiopian.jpg",
+        "Shiro":"https://upload.wikimedia.org/wikipedia/commons/0/05/Shiro_Wat.jpg"
+    }
 
-    st.plotly_chart(fig, use_container_width=True)
+    cols = st.columns(3)
+
+    for i,(dish,img) in enumerate(dish_images.items()):
+
+        with cols[i]:
+
+            st.image(img,caption=dish,use_container_width=True)
+
+            if dish in menu["item_name"].values:
+
+                data = menu[menu["item_name"]==dish].iloc[0]
+
+                st.metric("Orders",int(data["orders"]))
+                st.metric("Revenue",f"${data['revenue']:,.0f}")
 
 
 # =================================================
-# COMPETITION INTELLIGENCE
+# COMPETITION
 # =================================================
 
 with tabs[4]:
 
-    st.subheader("🏆 Ethiopian Restaurant Intelligence")
+    st.markdown("## 🏆 Nearby Ethiopian Restaurants")
 
-    restaurants, dishes = load_competitors()
+    restaurants,dishes = load_competitors()
 
     if restaurants.empty:
 
-        st.info("No competitor data available")
+        st.info("No competitor data")
 
     else:
 
@@ -335,13 +334,13 @@ with tabs[4]:
             title="Top Ethiopian Restaurants in NYC"
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig,use_container_width=True)
 
         st.dataframe(restaurants)
 
-        st.subheader("Restaurant Locations")
+        st.markdown("### Restaurant Locations")
 
-        map_df = restaurants.dropna(subset=["lat", "lon"])
+        map_df = restaurants.dropna(subset=["lat","lon"])
 
         if not map_df.empty:
 
@@ -360,22 +359,20 @@ with tabs[4]:
                 margin={"r":0,"t":0,"l":0,"b":0}
             )
 
-            st.plotly_chart(fig_map, use_container_width=True)
+            st.plotly_chart(fig_map,use_container_width=True)
 
     if not dishes.empty:
 
-        st.subheader("Most Mentioned Ethiopian Dishes")
+        st.markdown("### Popular Dishes in Reviews")
 
         fig2 = px.bar(
             dishes,
             x="dish",
             y="mentions",
-            title="Dish Popularity From Reviews"
+            title="Dish Mentions from Google Reviews"
         )
 
-        st.plotly_chart(fig2, use_container_width=True)
-
-        st.dataframe(dishes)
+        st.plotly_chart(fig2,use_container_width=True)
 
 
 # =================================================
@@ -384,24 +381,51 @@ with tabs[4]:
 
 with tabs[5]:
 
-    st.subheader("AI Restaurant Insights")
+    st.markdown("## 🧠 AI Insights")
 
     menu = load_menu()
+    inventory = load_inventory()
+    purchases = load_purchases()
+    restaurants,dishes = load_competitors()
+
+    insights=[]
 
     if not menu.empty:
 
-        top = menu.sort_values("orders", ascending=False).iloc[0]
+        best = menu.sort_values("orders",ascending=False).iloc[0]
+        insights.append(f"🔥 **{best['item_name']}** is your best selling dish ({int(best['orders'])} orders).")
 
-        st.success(
-            f"🔥 {top['item_name']} is your most popular dish"
-        )
+        worst = menu.sort_values("orders").iloc[0]
+        insights.append(f"⚠ **{worst['item_name']}** is underperforming ({int(worst['orders'])} orders).")
 
-        revenue = menu["revenue"].sum()
+    if not inventory.empty:
 
-        if revenue > 5000:
+        low = inventory[inventory["quantity"]<200]
 
-            st.info("💰 Your restaurant is performing strongly this week.")
+        if not low.empty:
 
-        else:
+            item = low.iloc[0]
 
-            st.warning("📈 Consider promoting your top dishes to increase revenue.")
+            insights.append(f"📦 Low inventory alert: **{item['ingredient_name']}** only {int(item['quantity'])} left.")
+
+    if not purchases.empty:
+
+        cost = purchases.sort_values("total_cost",ascending=False).iloc[0]
+
+        insights.append(f"💰 Highest spending ingredient: **{cost['ingredient_name']}** (${cost['total_cost']:.2f}).")
+
+    if not dishes.empty:
+
+        pop = dishes.sort_values("mentions",ascending=False).iloc[0]
+
+        insights.append(f"🏆 Competitors receive many reviews mentioning **{pop['dish']}** ({pop['mentions']} mentions).")
+
+    if insights:
+
+        for i in insights:
+
+            st.success(i)
+
+    else:
+
+        st.info("Not enough data yet to generate insights.")
