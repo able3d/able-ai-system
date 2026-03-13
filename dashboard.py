@@ -76,25 +76,17 @@ engine = create_engine(DATABASE_URL)
 # -------------------------------------------------
 # RUN PIPELINE
 # -------------------------------------------------
-
 st.markdown("### Data Pipeline")
 
-if st.button("▶ Run Data Pipeline"):
+if st.button("▶ Run Data Pipeline", key="run_data_pipeline_btn"):
 
     with st.spinner("Processing invoices, receipts, and competitor data..."):
         run_pipeline.run_pipeline()
 
     st.success("Pipeline completed!")
 
-if st.button("🔄 Refresh Dashboard"):
-    st.cache_data.clear()
-    st.rerun()
+if st.button("🔄 Refresh Dashboard", key="refresh_pipeline_dashboard_btn"):
 
-# -------------------------------------------------
-# REFRESH BUTTON
-# -------------------------------------------------
-
-if st.button("🔄 Refresh Dashboard"):
     st.cache_data.clear()
     st.rerun()
 
@@ -323,14 +315,17 @@ with tabs[3]:
 # =================================================
 # COMPETITION
 # =================================================
+# =================================================
+# COMPETITION
+# =================================================
 
 with tabs[4]:
 
     st.markdown("## 🏆 Nearby Ethiopian Restaurants")
 
-    # ------------------------------------------------
-    # SESSION STATE INIT
-    # ------------------------------------------------
+    # ---------------------------------------------
+    # SESSION STATE
+    # ---------------------------------------------
 
     if "restaurants" not in st.session_state:
         st.session_state.restaurants = None
@@ -339,15 +334,18 @@ with tabs[4]:
         st.session_state.dishes = None
 
 
-    # ------------------------------------------------
-    # CONTROL BUTTONS
-    # ------------------------------------------------
+    # ---------------------------------------------
+    # BUTTON CONTROLS
+    # ---------------------------------------------
 
     col1, col2 = st.columns(2)
 
     with col1:
 
-        if st.button("▶ Run Competitor Scraper", key="run_competitor_scraper"):
+        if st.button(
+            "▶ Run Competitor Scraper",
+            key="competitor_scraper_button"
+        ):
 
             with st.spinner("Collecting competitor intelligence..."):
 
@@ -370,25 +368,29 @@ with tabs[4]:
 
     with col2:
 
-        if st.button("🔄 Refresh Dashboard", key="refresh_competitor_dashboard"):
+        if st.button(
+            "🔄 Refresh Dashboard",
+            key="competitor_refresh_button"
+        ):
 
             st.cache_data.clear()
             st.rerun()
 
+
     st.markdown("---")
 
 
-    # ------------------------------------------------
-    # LOAD DATA FROM SESSION
-    # ------------------------------------------------
+    # ---------------------------------------------
+    # LOAD DATA
+    # ---------------------------------------------
 
     restaurants = st.session_state.restaurants
     dishes = st.session_state.dishes
 
 
-    # ------------------------------------------------
+    # ---------------------------------------------
     # RESTAURANTS
-    # ------------------------------------------------
+    # ---------------------------------------------
 
     if restaurants is None or restaurants.empty:
 
@@ -408,9 +410,9 @@ with tabs[4]:
         st.dataframe(restaurants)
 
 
-        # ------------------------------------------------
+        # ---------------------------------------------
         # MAP
-        # ------------------------------------------------
+        # ---------------------------------------------
 
         st.markdown("### Restaurant Locations")
 
@@ -430,7 +432,7 @@ with tabs[4]:
 
             fig_map.update_layout(
                 mapbox_style="open-street-map",
-                margin={"r":0, "t":0, "l":0, "b":0}
+                margin={"r":0,"t":0,"l":0,"b":0}
             )
 
             st.plotly_chart(fig_map, use_container_width=True)
@@ -440,9 +442,9 @@ with tabs[4]:
             st.warning("Map coordinates missing.")
 
 
-    # ------------------------------------------------
-    # DISH POPULARITY
-    # ------------------------------------------------
+    # ---------------------------------------------
+    # POPULAR DISHES
+    # ---------------------------------------------
 
     if dishes is not None and not dishes.empty:
 
@@ -458,6 +460,7 @@ with tabs[4]:
         st.plotly_chart(fig2, use_container_width=True)
 
 
+ 
 # =================================================
 # AI INSIGHTS
 # =================================================
