@@ -320,16 +320,74 @@ with tabs[3]:
 # =================================================
 # COMPETITION
 # =================================================
+# =================================================
+# COMPETITION
+# =================================================
 
 with tabs[4]:
 
     st.markdown("## 🏆 Nearby Ethiopian Restaurants")
 
-    restaurants,dishes = load_competitors()
+    # -----------------------------------------------
+    # SESSION STATE
+    # -----------------------------------------------
 
-    if restaurants.empty:
+    if "restaurants" not in st.session_state:
+        st.session_state.restaurants = None
 
-        st.info("No competitor data")
+    if "dishes" not in st.session_state:
+        st.session_state.dishes = None
+
+
+    # -----------------------------------------------
+    # CONTROL BUTTONS
+    # -----------------------------------------------
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        if st.button("▶ Run Competitor Scraper"):
+
+            with st.spinner("Collecting competitor intelligence..."):
+
+                restaurants, dishes = load_competitors()
+
+                # ensure coordinates are numeric
+                if not restaurants.empty:
+                    restaurants["lat"] = pd.to_numeric(restaurants["lat"], errors="coerce")
+                    restaurants["lon"] = pd.to_numeric(restaurants["lon"], errors="coerce")
+
+                st.session_state.restaurants = restaurants
+                st.session_state.dishes = dishes
+
+            st.success("Competitor data loaded!")
+
+    with col2:
+
+        if st.button("🔄 Refresh Dashboard"):
+
+            st.cache_data.clear()
+            st.rerun()
+
+    st.markdown("---")
+
+
+    # -----------------------------------------------
+    # LOAD DATA FROM SESSION
+    # -----------------------------------------------
+
+    restaurants = st.session_state.restaurants
+    dishes = st.session_state.dishes
+
+
+    # -----------------------------------------------
+    # RESTAURANT DATA
+    # -----------------------------------------------
+
+    if restaurants is None or restaurants.empty:
+
+        st.info("Click **Run Competitor Scraper** to load competitor data.")
 
     else:
 
@@ -340,13 +398,17 @@ with tabs[4]:
             title="Top Ethiopian Restaurants in NYC"
         )
 
-        st.plotly_chart(fig,use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
 
         st.dataframe(restaurants)
 
+        # -----------------------------------------------
+        # MAP
+        # -----------------------------------------------
+
         st.markdown("### Restaurant Locations")
 
-        map_df = restaurants.dropna(subset=["lat","lon"])
+        map_df = restaurants.dropna(subset=["lat", "lon"])
 
         if not map_df.empty:
 
@@ -365,9 +427,18 @@ with tabs[4]:
                 margin={"r":0,"t":0,"l":0,"b":0}
             )
 
-            st.plotly_chart(fig_map,use_container_width=True)
+            st.plotly_chart(fig_map, use_container_width=True)
 
-    if not dishes.empty:
+        else:
+
+            st.warning("Map coordinates missing.")
+
+
+    # -----------------------------------------------
+    # POPULAR DISHES
+    # -----------------------------------------------
+
+    if dishes is not None and not dishes.empty:
 
         st.markdown("### Popular Dishes in Reviews")
 
@@ -378,7 +449,7 @@ with tabs[4]:
             title="Dish Mentions from Google Reviews"
         )
 
-        st.plotly_chart(fig2,use_container_width=True)
+        st.plotly_chart(fig2, use_container_width=True)
 
 
 # =================================================
