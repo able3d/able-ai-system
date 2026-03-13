@@ -11,161 +11,161 @@ from sqlalchemy import create_engine, text
 INVOICE_FOLDER = "data/invoices"
 PROCESSED_FOLDER = "data/processed_invoices"
 
+os.makedirs(INVOICE_FOLDER, exist_ok=True)
 os.makedirs(PROCESSED_FOLDER, exist_ok=True)
 
 # ----------------------------------------------------
-# DATABASE CONNECTION
+# DATABASE
 # ----------------------------------------------------
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable not set")
+
 engine = create_engine(DATABASE_URL)
 
-
 # ----------------------------------------------------
-# INGREDIENT NAME MAPPING
+# INGREDIENT NORMALIZATION
 # ----------------------------------------------------
 
 INGREDIENT_MAP = {
 
-    # meats
     "beef stew meat": "beef",
     "ground beef": "beef",
     "beef cubes": "beef",
+
     "whole chicken": "chicken",
     "chicken drumsticks": "chicken",
+
     "lamb cubes": "lamb",
 
-    # grains
     "teff flour": "teff flour",
     "white teff flour": "teff flour",
+
     "barley flour": "barley flour",
     "wheat flour": "wheat flour",
 
-    # legumes
     "red lentils": "lentils",
     "yellow split peas": "split peas",
 
-    # vegetables
     "red onions": "onion",
     "onions": "onion",
+
     "fresh tomatoes": "tomato",
     "tomatoes": "tomato",
+
     "garlic": "garlic",
     "ginger": "ginger",
+
     "cabbage": "cabbage",
     "potatoes": "potato",
     "carrots": "carrot",
 
-    # spices
     "berbere spice": "berbere",
     "mitmita": "mitmita",
 
-    # beverages
     "green coffee beans": "coffee beans",
 
-    # injera
     "injera bread": "injera"
 }
 
-
 # ----------------------------------------------------
-# EXTRACT ITEMS FROM INVOICE TEXT
+# EXTRACT ITEMS
 # ----------------------------------------------------
 
 def extract_items(text):
 
     items = []
+
     lines = text.split("\n")
 
-
     pattern = re.compile(
-    r"([A-Za-z\s]+)\s+(\d+)\s+\$?(\d+\.?\d*)"
+        r"([A-Za-z\s]+)\s+(\d+)\s*\$?(\d+\.?\d*)"
     )
+
     for line in lines:
 
         match = pattern.search(line)
 
-        if match:
+        if not match:
+            continue
 
-            name = match.group(1).strip().lower()
-            quantity = int(match.group(2))
-            price = float(match.group(3))
+        name = match.group(1).strip().lower()
+        quantity = int(match.group(2))
+        price = float(match.group(3))
 
-            name = INGREDIENT_MAP.get(name, name)
+        name = INGREDIENT_MAP.get(name, name)
 
-            items.append({
-                "name": name,
-                "quantity": quantity,
-                "price": price
-            })
+        items.append({
+            "name": name,
+            "quantity": quantity,
+            "price": price
+        })
 
     return items
 
-
 # ----------------------------------------------------
-# INSERT PURCHASE INTO DATABASE
+# INSERT PURCHASE
 # ----------------------------------------------------
 
 def insert_purchase(item):
 
     with engine.begin() as conn:
 
-        # Ensure ingredient exists
-        ingredient_query = text("""
+        # ensure ingredient exists
+        conn.execute(text("""
         INSERT INTO ingredients (ingredient_name, unit)
         VALUES (:name, 'unit')
         ON CONFLICT (ingredient_name) DO NOTHING
-        """)
+        """), {"name": item["name"]})
 
-        conn.execute(ingredient_query, {"name": item["name"]})
-
-        # Insert purchase record
-        purchase_query = text("""
-        INSERT INTO purchases
-        (ingredient_name, quantity, unit, price, purchase_date)
-
-        VALUES
-        (:name, :quantity, 'unit', :price, CURRENT_DATE)
-        """)
-
-        conn.execute(purchase_query, item)
-
-        # Update inventory
-        inventory_query = text("""
-        INSERT INTO inventory (ingredient_id, quantity)
-
-        SELECT ingredient_id, :quantity
+        # get ingredient id
+        result = conn.execute(text("""
+        SELECT ingredient_id
         FROM ingredients
         WHERE ingredient_name = :name
+        """), {"name": item["name"]})
+
+        ingredient_id = result.fetchone()[0]
+
+        # insert purchase
+        conn.execute(text("""
+        INSERT INTO purchases
+        (ingredient_name, quantity, unit, price, purchase_date)
+        VALUES
+        (:name, :quantity, 'unit', :price, CURRENT_DATE)
+        """), item)
+
+        # update inventory
+        conn.execute(text("""
+        INSERT INTO inventory (ingredient_id, quantity)
+        VALUES (:ingredient_id, :quantity)
 
         ON CONFLICT (ingredient_id)
-        DO UPDATE SET quantity = inventory.quantity + EXCLUDED.quantity
-        """)
-
-        conn.execute(inventory_query, item)
-
+        DO UPDATE SET
+        quantity = inventory.quantity + EXCLUDED.quantity
+        """), {
+            "ingredient_id": ingredient_id,
+            "quantity": item["quantity"]
+        })
 
 # ----------------------------------------------------
-# PROCESS ALL INVOICES
+# PROCESS INVOICES
 # ----------------------------------------------------
 
 def process_all_invoices():
 
     print("Processing invoices...")
-    print("invoice folder path:", INVOICE_FOLDER)
-
-    if not os.path.exists(INVOICE_FOLDER):
-
-        print("Invoice folder not found")
-        return
 
     files = os.listdir(INVOICE_FOLDER)
 
-    print("Files detected:", files)
+    if not files:
+        print("No invoices found")
 
     for file in files:
 
-        if not file.endswith(".pdf"):
+        if not file.lower().endswith(".pdf"):
             continue
 
         file_path = os.path.join(INVOICE_FOLDER, file)
@@ -174,16 +174,16 @@ def process_all_invoices():
 
         try:
 
-            with pdfplumber.open(file_path) as pdf:
+            text_content = ""
 
-                text_content = ""
+            with pdfplumber.open(file_path) as pdf:
 
                 for page in pdf.pages:
 
-                    page_text = page.extract_text()
+                    text = page.extract_text()
 
-                    if page_text:
-                        text_content += page_text + "\n"
+                    if text:
+                        text_content += text + "\n"
 
                     tables = page.extract_tables()
 
@@ -193,13 +193,10 @@ def process_all_invoices():
 
                             if row:
                                 row_text = " ".join(
-                                    [str(cell) for cell in row if cell]
+                                    str(cell) for cell in row if cell
                                 )
 
                                 text_content += row_text + "\n"
-
-            print("---- RAW INVOICE TEXT ----")
-            print(text_content)
 
             items = extract_items(text_content)
 
@@ -207,19 +204,16 @@ def process_all_invoices():
 
             for item in items:
 
-                print("Processing item:", item)
-
                 insert_purchase(item)
 
-                print("Inserted:", item["name"])
+                print("Inserted purchase:", item["name"])
 
-            # Move processed file
             shutil.move(
                 file_path,
                 os.path.join(PROCESSED_FOLDER, file)
             )
 
-            print("Moved invoice to processed folder\n")
+            print("Invoice processed:", file)
 
         except Exception as e:
 
