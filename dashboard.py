@@ -328,9 +328,9 @@ with tabs[4]:
 
     st.markdown("## 🏆 Nearby Ethiopian Restaurants")
 
-    # -----------------------------------------------
-    # SESSION STATE
-    # -----------------------------------------------
+    # ------------------------------------------------
+    # SESSION STATE INIT
+    # ------------------------------------------------
 
     if "restaurants" not in st.session_state:
         st.session_state.restaurants = None
@@ -339,24 +339,29 @@ with tabs[4]:
         st.session_state.dishes = None
 
 
-    # -----------------------------------------------
+    # ------------------------------------------------
     # CONTROL BUTTONS
-    # -----------------------------------------------
+    # ------------------------------------------------
 
     col1, col2 = st.columns(2)
 
     with col1:
 
-        if st.button("▶ Run Competitor Scraper"):
+        if st.button("▶ Run Competitor Scraper", key="run_competitor_scraper"):
 
             with st.spinner("Collecting competitor intelligence..."):
 
                 restaurants, dishes = load_competitors()
 
-                # ensure coordinates are numeric
-                if not restaurants.empty:
-                    restaurants["lat"] = pd.to_numeric(restaurants["lat"], errors="coerce")
-                    restaurants["lon"] = pd.to_numeric(restaurants["lon"], errors="coerce")
+                if restaurants is not None and not restaurants.empty:
+
+                    restaurants["lat"] = pd.to_numeric(
+                        restaurants["lat"], errors="coerce"
+                    )
+
+                    restaurants["lon"] = pd.to_numeric(
+                        restaurants["lon"], errors="coerce"
+                    )
 
                 st.session_state.restaurants = restaurants
                 st.session_state.dishes = dishes
@@ -365,7 +370,7 @@ with tabs[4]:
 
     with col2:
 
-        if st.button("🔄 Refresh Dashboard"):
+        if st.button("🔄 Refresh Dashboard", key="refresh_competitor_dashboard"):
 
             st.cache_data.clear()
             st.rerun()
@@ -373,17 +378,17 @@ with tabs[4]:
     st.markdown("---")
 
 
-    # -----------------------------------------------
+    # ------------------------------------------------
     # LOAD DATA FROM SESSION
-    # -----------------------------------------------
+    # ------------------------------------------------
 
     restaurants = st.session_state.restaurants
     dishes = st.session_state.dishes
 
 
-    # -----------------------------------------------
-    # RESTAURANT DATA
-    # -----------------------------------------------
+    # ------------------------------------------------
+    # RESTAURANTS
+    # ------------------------------------------------
 
     if restaurants is None or restaurants.empty:
 
@@ -402,9 +407,10 @@ with tabs[4]:
 
         st.dataframe(restaurants)
 
-        # -----------------------------------------------
+
+        # ------------------------------------------------
         # MAP
-        # -----------------------------------------------
+        # ------------------------------------------------
 
         st.markdown("### Restaurant Locations")
 
@@ -424,7 +430,7 @@ with tabs[4]:
 
             fig_map.update_layout(
                 mapbox_style="open-street-map",
-                margin={"r":0,"t":0,"l":0,"b":0}
+                margin={"r":0, "t":0, "l":0, "b":0}
             )
 
             st.plotly_chart(fig_map, use_container_width=True)
@@ -434,9 +440,9 @@ with tabs[4]:
             st.warning("Map coordinates missing.")
 
 
-    # -----------------------------------------------
-    # POPULAR DISHES
-    # -----------------------------------------------
+    # ------------------------------------------------
+    # DISH POPULARITY
+    # ------------------------------------------------
 
     if dishes is not None and not dishes.empty:
 
