@@ -21,7 +21,7 @@ st.set_page_config(
 # -------------------------------------------------
 
 st.image(
-    "https://images.unsplash.com/photo-1604908176997-125f25cc6f3d",
+    "images/vegan combo.PNG",
     use_container_width=True
 )
 
@@ -288,9 +288,9 @@ with tabs[3]:
     menu = load_menu()
 
     dish_images = {
-        "Doro Wat":"https://upload.wikimedia.org/wikipedia/commons/3/33/Doro_Wat.jpg",
-        "Kitfo":"https://upload.wikimedia.org/wikipedia/commons/4/4f/Kitfo_Ethiopian.jpg",
-        "Shiro":"https://upload.wikimedia.org/wikipedia/commons/0/05/Shiro_Wat.jpg"
+        "Doro Wat":"images/doro_wat.PNG",
+        "Kitfo":"images/kitfo.PNG",
+        "Shiro":"images/shiro.PNG"
     }
 
     cols = st.columns(3)
