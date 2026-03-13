@@ -127,16 +127,20 @@ def load_menu():
     query = """
     SELECT
         m.item_name,
-        SUM(s.orders) orders,
-        SUM(s.revenue) revenue
+        COALESCE(SUM(s.orders),0) AS orders,
+        COALESCE(SUM(s.revenue),0) AS revenue
     FROM menu_sales s
     JOIN menu_items m
-    ON s.item_id = m.item_id
+        ON s.item_id = m.item_id
     GROUP BY m.item_name
+    ORDER BY revenue DESC
     """
 
-    return pd.read_sql(query, engine)
+    df = pd.read_sql(query, engine)
 
+    df.index = range(1, len(df) + 1)   # start index at 1
+
+    return df
 
 @st.cache_data(ttl=60)
 def load_inventory():
