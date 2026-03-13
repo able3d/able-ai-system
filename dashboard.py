@@ -20,7 +20,8 @@ st.markdown("""
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Able AI">
-<link rel="apple-touch-icon" href="https://raw.githubusercontent.com/YOUR_GITHUB/able-ai/main/images/app_icon.png">
+<link rel="apple-touch-icon" href="https://raw.githubusercontent.com/able-ai-system
+/able-ai/main/images/app_icon.png">
 """, unsafe_allow_html=True)
 # -------------------------------------------------
 # HERO IMAGE
