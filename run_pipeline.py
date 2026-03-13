@@ -1,16 +1,14 @@
 from etl.google_drive_etl import download_all_files
 from parse_invoices import process_all_invoices
 from parse_receipts import process_all_receipts
-
 from google_reviews_scraper import scrape_google_reviews
 
 from sqlalchemy import create_engine, text
 import os
-import shutil
 
 
 # --------------------------------------------------
-# ENVIRONMENT VARIABLES
+# ENV VARIABLES
 # --------------------------------------------------
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -28,7 +26,7 @@ engine = create_engine(DATABASE_URL)
 
 
 # --------------------------------------------------
-# INIT DATABASE
+# DATABASE INITIALIZATION
 # --------------------------------------------------
 
 def init_db():
@@ -86,6 +84,43 @@ def init_db():
         )
         """))
 
+        # Track processed files
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS processed_files (
+            file_name TEXT PRIMARY KEY,
+            processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """))
+
+
+# --------------------------------------------------
+# PROCESSED FILE TRACKING
+# --------------------------------------------------
+
+def get_processed_files():
+
+    with engine.begin() as conn:
+
+        result = conn.execute(text(
+            "SELECT file_name FROM processed_files"
+        ))
+
+        return {row[0] for row in result}
+
+
+def mark_file_processed(file_name):
+
+    with engine.begin() as conn:
+
+        conn.execute(
+            text("""
+            INSERT INTO processed_files (file_name)
+            VALUES (:name)
+            ON CONFLICT (file_name) DO NOTHING
+            """),
+            {"name": file_name}
+        )
+
 
 # --------------------------------------------------
 # GOOGLE DRIVE ETL
@@ -95,16 +130,14 @@ def run_drive_etl():
 
     print("Running Google Drive ETL...")
 
-    # Clear old downloaded files
-    shutil.rmtree(INVOICE_FOLDER, ignore_errors=True)
-    shutil.rmtree(RECEIPT_FOLDER, ignore_errors=True)
-
     os.makedirs(INVOICE_FOLDER, exist_ok=True)
     os.makedirs(RECEIPT_FOLDER, exist_ok=True)
 
-    # ---------------------------
-    # INVOICES
-    # ---------------------------
+    processed = get_processed_files()
+
+    # -----------------------------
+    # DOWNLOAD INVOICES
+    # -----------------------------
 
     if INVOICE_FOLDER_ID:
 
@@ -112,20 +145,37 @@ def run_drive_etl():
 
         download_all_files(INVOICE_FOLDER_ID, INVOICE_FOLDER)
 
-        print("Processing invoices...")
+        for file in os.listdir(INVOICE_FOLDER):
 
-        try:
-            process_all_invoices(INVOICE_FOLDER)
-        except Exception as e:
-            print("Invoice processing failed:", e)
+            if not file.endswith(".pdf"):
+                continue
+
+            if file in processed:
+
+                print("Skipping already processed invoice:", file)
+                continue
+
+            filepath = os.path.join(INVOICE_FOLDER, file)
+
+            print("Processing invoice:", file)
+
+            try:
+
+                process_all_invoices(filepath)
+
+                mark_file_processed(file)
+
+            except Exception as e:
+
+                print("Invoice processing failed:", file, e)
 
     else:
 
         print("No invoice folder configured")
 
-    # ---------------------------
-    # RECEIPTS
-    # ---------------------------
+    # -----------------------------
+    # DOWNLOAD RECEIPTS
+    # -----------------------------
 
     if RECEIPT_FOLDER_ID:
 
@@ -133,12 +183,29 @@ def run_drive_etl():
 
         download_all_files(RECEIPT_FOLDER_ID, RECEIPT_FOLDER)
 
-        print("Processing receipts...")
+        for file in os.listdir(RECEIPT_FOLDER):
 
-        try:
-            process_all_receipts(RECEIPT_FOLDER)
-        except Exception as e:
-            print("Receipt processing failed:", e)
+            if not file.endswith(".pdf"):
+                continue
+
+            if file in processed:
+
+                print("Skipping already processed receipt:", file)
+                continue
+
+            filepath = os.path.join(RECEIPT_FOLDER, file)
+
+            print("Processing receipt:", file)
+
+            try:
+
+                process_all_receipts(filepath)
+
+                mark_file_processed(file)
+
+            except Exception as e:
+
+                print("Receipt processing failed:", file, e)
 
     else:
 
@@ -169,7 +236,7 @@ def run_competitor_etl():
 
 
 # --------------------------------------------------
-# INVENTORY DEDUCTION
+# INVENTORY USAGE CALCULATION
 # --------------------------------------------------
 
 def deduct_inventory():
@@ -201,7 +268,7 @@ def deduct_inventory():
 
 
 # --------------------------------------------------
-# RUN PIPELINE
+# RUN FULL PIPELINE
 # --------------------------------------------------
 
 def run_pipeline():
@@ -210,7 +277,7 @@ def run_pipeline():
 
     init_db()
 
-    print("Running ETL pipelines...")
+    print("Starting ETL pipelines...")
 
     run_drive_etl()
 
