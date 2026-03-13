@@ -95,19 +95,27 @@ engine = create_engine(DATABASE_URL)
 # -------------------------------------------------
 # RUN PIPELINE
 # -------------------------------------------------
-st.markdown("### Data Pipeline")
+st.markdown("## ⚙️ Data Pipeline")
 
-if st.button("▶ Run Data Pipeline", key="run_data_pipeline_btn"):
+col1, col2, col3 = st.columns(3)
 
-    with st.spinner("Processing invoices, receipts, and competitor data..."):
-        run_pipeline.run_pipeline()
+with col1:
+    if st.button("▶ Run Pipeline", key="run_pipeline_btn"):
 
-    st.success("Pipeline completed!")
+        with st.spinner("Processing invoices, receipts, and competitor data..."):
+            run_pipeline.run_pipeline()
 
-if st.button("🔄 Refresh Dashboard", key="refresh_pipeline_dashboard_btn"):
+        st.success("Pipeline completed!")
 
-    st.cache_data.clear()
-    st.rerun()
+with col2:
+    if st.button("🔄 Refresh", key="refresh_btn"):
+        st.cache_data.clear()
+        st.rerun()
+
+with col3:
+    if st.button("🧹 Clear Cache", key="clear_cache_btn"):
+        st.cache_data.clear()
+        st.success("Cache cleared!")
 
 # -------------------------------------------------
 # DATA LOADERS
