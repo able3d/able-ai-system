@@ -118,9 +118,8 @@ with col3:
         st.success("Cache cleared!")
 
 # -------------------------------------------------
-# DATA LOADERS
-# -------------------------------------------------
-
+# DATA 
+# ----------
 @st.cache_data(ttl=60)
 def load_menu():
 
@@ -129,8 +128,8 @@ def load_menu():
         m.item_name,
         COALESCE(SUM(s.orders),0) AS orders,
         COALESCE(SUM(s.revenue),0) AS revenue
-    FROM menu_sales s
-    JOIN menu_items m
+    FROM menu_items m
+    LEFT JOIN menu_sales s
         ON s.item_id = m.item_id
     GROUP BY m.item_name
     ORDER BY revenue DESC
@@ -138,7 +137,7 @@ def load_menu():
 
     df = pd.read_sql(query, engine)
 
-    df.index = range(1, len(df) + 1)   # start index at 1
+    df.index = range(1, len(df) + 1)
 
     return df
 
@@ -223,21 +222,46 @@ tabs = st.tabs([
 # =================================================
 # DASHBOARD
 # =================================================
-
 with tabs[0]:
 
     menu = load_menu()
 
+    # --------------------------------
+    # Revenue + Orders
+    # --------------------------------
+
     revenue = menu["revenue"].sum()
     orders = menu["orders"].sum()
 
+    # --------------------------------
+    # Ingredient Spend
+    # --------------------------------
+
+    spend_query = """
+    SELECT COALESCE(SUM(price),0) AS total_spend
+    FROM purchases
+    """
+
+    spend = pd.read_sql(spend_query, engine).iloc[0]["total_spend"]
+
+    profit = revenue - spend
+
+    # --------------------------------
+    # Metrics
+    # --------------------------------
+
     st.markdown("## Restaurant Performance")
 
-    c1,c2,c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
 
-    c1.metric("💰 Revenue",f"${revenue:,.0f}")
-    c2.metric("🍽 Orders",int(orders))
-    c3.metric("📋 Menu Items",menu["item_name"].nunique())
+    c1.metric("💰 Revenue", f"${revenue:,.0f}")
+    c2.metric("💸 Ingredient Spend", f"${spend:,.0f}")
+    c3.metric("📈 Estimated Profit", f"${profit:,.0f}")
+    c4.metric("🍽 Orders", int(orders))
+
+    # --------------------------------
+    # Revenue Chart
+    # --------------------------------
 
     fig = px.bar(
         menu,
@@ -249,7 +273,15 @@ with tabs[0]:
 
     fig.update_layout(xaxis_tickangle=-30)
 
-    st.plotly_chart(fig,use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # --------------------------------
+    # Menu Table
+    # --------------------------------
+
+    st.markdown("### Menu Performance")
+
+    st.dataframe(menu, use_container_width=True)
 
 
 # =================================================
