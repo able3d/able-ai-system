@@ -25,7 +25,7 @@ st.image(
 )
 
 st.markdown("""
-# 🍽 Able AI Restaurant Intelligence
+# 🍽 Able AI Restaurant Intelligence  
 Track **inventory, menu performance, competitor demand, and restaurant trends** in real time.
 """)
 
@@ -53,7 +53,7 @@ header {visibility:hidden;}
 
 .block-container{
 padding-top:1rem;
-max-width:800px;
+max-width:850px;
 }
 
 [data-testid="metric-container"]{
@@ -145,6 +145,22 @@ def load_competitors():
     restaurants = data["restaurants"]
     dishes = data["dishes"]
 
+    # Add coordinates so map works
+    coords = {
+        "Haile": (40.7216, -73.9803),
+        "Awaze": (40.7487, -73.9857),
+        "Addey Ababa": (40.7262, -73.9845)
+    }
+
+    for i, row in restaurants.iterrows():
+
+        name = row["Restaurant"]
+
+        if name in coords:
+
+            restaurants.loc[i, "lat"] = coords[name][0]
+            restaurants.loc[i, "lon"] = coords[name][1]
+
     return restaurants, dishes
 
 
@@ -191,25 +207,27 @@ with tabs[0]:
 
     st.plotly_chart(fig, use_container_width=True)
 
+    # Popular dishes images
+
     st.markdown("## Popular Ethiopian Dishes")
 
     c1, c2, c3 = st.columns(3)
 
     with c1:
         st.image(
-            "https://upload.wikimedia.org/wikipedia/commons/3/3b/Doro_Wat.jpg",
+            "https://images.unsplash.com/photo-1617196038435-6c7d1e4a2b2c",
             caption="Doro Wat"
         )
 
     with c2:
         st.image(
-            "https://upload.wikimedia.org/wikipedia/commons/8/86/Kitfo.jpg",
+            "https://images.unsplash.com/photo-1604909053196-7b6c6d7d3a8f",
             caption="Kitfo"
         )
 
     with c3:
         st.image(
-            "https://upload.wikimedia.org/wikipedia/commons/e/e8/Shiro_wat.jpg",
+            "https://images.unsplash.com/photo-1617191517000-2f6b7d7b9e43",
             caption="Shiro"
         )
 
@@ -316,34 +334,38 @@ with tabs[4]:
 
         st.dataframe(restaurants)
 
-        st.markdown("### Restaurant Locations")
+        st.subheader("Restaurant Locations")
 
-        fig_map = px.scatter_mapbox(
-            restaurants,
-            lat="lat",
-            lon="lon",
-            hover_name="Restaurant",
-            hover_data=["Rating"],
-            zoom=11,
-            height=500
-        )
+        map_df = restaurants.dropna(subset=["lat", "lon"])
 
-        fig_map.update_layout(
-            mapbox_style="open-street-map",
-            margin={"r":0,"t":0,"l":0,"b":0}
-        )
+        if not map_df.empty:
 
-        st.plotly_chart(fig_map, use_container_width=True)
+            fig_map = px.scatter_mapbox(
+                map_df,
+                lat="lat",
+                lon="lon",
+                hover_name="Restaurant",
+                hover_data=["Rating"],
+                zoom=12,
+                height=450
+            )
+
+            fig_map.update_layout(
+                mapbox_style="open-street-map",
+                margin={"r":0,"t":0,"l":0,"b":0}
+            )
+
+            st.plotly_chart(fig_map, use_container_width=True)
 
     if not dishes.empty:
 
-        st.subheader("Most Mentioned Dishes in Reviews")
+        st.subheader("Most Mentioned Ethiopian Dishes")
 
         fig2 = px.bar(
             dishes,
             x="dish",
             y="mentions",
-            title="Dish Popularity"
+            title="Dish Popularity From Reviews"
         )
 
         st.plotly_chart(fig2, use_container_width=True)
@@ -360,7 +382,6 @@ with tabs[5]:
     st.subheader("AI Restaurant Insights")
 
     menu = load_menu()
-    inventory = load_inventory()
 
     if not menu.empty:
 
@@ -370,12 +391,12 @@ with tabs[5]:
             f"🔥 {top['item_name']} is your most popular dish"
         )
 
-    if not inventory.empty:
+        revenue = menu["revenue"].sum()
 
-        low = inventory[inventory["quantity"] < 200]
+        if revenue > 5000:
 
-        if not low.empty:
+            st.info("💰 Your restaurant is performing strongly this week.")
 
-            st.warning(
-                f"⚠ {len(low)} ingredients running low. Consider reordering."
-            )
+        else:
+
+            st.warning("📈 Consider promoting your top dishes to increase revenue.")
