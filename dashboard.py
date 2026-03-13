@@ -77,12 +77,18 @@ engine = create_engine(DATABASE_URL)
 # RUN PIPELINE
 # -------------------------------------------------
 
-if "pipeline_ran" not in st.session_state:
+st.markdown("### Data Pipeline")
 
-    with st.spinner("Running data pipeline..."):
+if st.button("▶ Run Data Pipeline"):
+
+    with st.spinner("Processing invoices, receipts, and competitor data..."):
         run_pipeline.run_pipeline()
 
-    st.session_state.pipeline_ran = True
+    st.success("Pipeline completed!")
+
+if st.button("🔄 Refresh Dashboard"):
+    st.cache_data.clear()
+    st.rerun()
 
 # -------------------------------------------------
 # REFRESH BUTTON
