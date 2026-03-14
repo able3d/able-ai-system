@@ -103,7 +103,7 @@ def run_drive_etl():
 
         print("Invoices downloaded:", os.listdir(INVOICE_FOLDER))
 
-        print("Processing invoices...\n")
+        print("\nProcessing invoices...\n")
 
         process_all_invoices()
 
@@ -119,7 +119,7 @@ def run_drive_etl():
 
         print("Receipts downloaded:", os.listdir(RECEIPT_FOLDER))
 
-        print("Processing receipts...\n")
+        print("\nProcessing receipts...\n")
 
         process_all_receipts()
 
@@ -163,7 +163,8 @@ def deduct_inventory():
 
         conn.execute(text("""
         UPDATE inventory
-        SET quantity = quantity - usage.total_used
+        SET quantity = GREATEST(quantity - usage.total_used, 0)
+
         FROM (
             SELECT
                 b.ingredient_id,
@@ -173,6 +174,7 @@ def deduct_inventory():
             ON b.item_id = s.item_id
             GROUP BY b.ingredient_id
         ) usage
+
         WHERE inventory.ingredient_id = usage.ingredient_id
         """))
 
@@ -183,24 +185,29 @@ def deduct_inventory():
 
 def run_pipeline():
 
-    print("\n==============================")
-    print("STARTING DATA PIPELINE")
-    print("==============================\n")
+    print("\n===================================")
+    print("STARTING ABLE AI DATA PIPELINE")
+    print("===================================\n")
 
-    print("Initializing database...\n")
+    print("Step 1: Initializing database...\n")
     init_db()
 
-    print("Running ETL processes...\n")
-
+    print("Step 2: Running Google Drive ETL...\n")
     run_drive_etl()
 
-    run_competitor_etl()
+    print("Step 3: Scraping competitor reviews...\n")
 
+    try:
+        run_competitor_etl()
+    except Exception as e:
+        print("Competitor scraper failed:", e)
+
+    print("Step 4: Updating inventory consumption...\n")
     deduct_inventory()
 
-    print("\n==============================")
+    print("\n===================================")
     print("PIPELINE COMPLETED SUCCESSFULLY")
-    print("==============================\n")
+    print("===================================\n")
 
 
 # --------------------------------------------------
