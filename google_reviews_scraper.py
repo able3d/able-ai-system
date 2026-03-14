@@ -4,17 +4,45 @@ from bs4 import BeautifulSoup
 
 
 # --------------------------------------------------
+# COMPETITOR RESTAURANTS
+# --------------------------------------------------
+
+competitors = [
+{
+"name":"Haile Ethiopian Restaurant",
+"lat":40.7216,
+"lon":-73.9803
+},
+{
+"name":"Awaze Ethiopian Restaurant",
+"lat":40.7487,
+"lon":-73.9857
+},
+{
+"name":"Meskerem Ethiopian Restaurant",
+"lat":40.7420,
+"lon":-73.9836
+},
+{
+"name":"Bunna Cafe",
+"lat":40.6893,
+"lon":-73.9590
+}
+]
+
+
+# --------------------------------------------------
 # DISH KEYWORDS
 # --------------------------------------------------
 
 dish_keywords = [
-    "doro wat",
-    "injera",
-    "kitfo",
-    "tibs",
-    "shiro",
-    "lentil",
-    "vegetarian combo"
+"doro wat",
+"injera",
+"kitfo",
+"tibs",
+"shiro",
+"lentil",
+"vegetarian combo"
 ]
 
 
@@ -24,14 +52,13 @@ dish_keywords = [
 
 def calculate_demand(text):
 
-    score = 0
-
     text = text.lower()
+
+    score = 0
 
     for dish in dish_keywords:
 
-        if dish in text:
-            score += text.count(dish)
+        score += text.count(dish)
 
     return score
 
@@ -42,39 +69,68 @@ def calculate_demand(text):
 
 def scrape_google_reviews():
 
-    url = "https://www.google.com/search?q=ethiopian+restaurant+new+york"
+    restaurants_data = []
+
+    all_text = ""
 
     headers = {
-        "User-Agent": "Mozilla/5.0"
+    "User-Agent":"Mozilla/5.0"
     }
 
-    response = requests.get(url, headers=headers)
+    for r in competitors:
 
-    soup = BeautifulSoup(response.text, "html.parser")
+        query = r["name"].replace(" ","+")
 
-    restaurants = []
+        url = f"https://www.google.com/search?q={query}+reviews"
 
-    results = soup.select("div.BNeawe")
+        try:
 
-    for i, result in enumerate(results[:5]):
+            response = requests.get(url,headers=headers)
 
-        name = result.get_text()
+            soup = BeautifulSoup(response.text,"html.parser")
 
-        demand = calculate_demand(name)
+            page_text = soup.get_text()
 
-        restaurants.append({
-            "Restaurant": name,
+            demand = calculate_demand(page_text)
+
+            restaurants_data.append({
+
+            "Restaurant": r["name"],
             "Rating": 4.0,
-            "lat": None,
-            "lon": None,
+            "lat": r["lat"],
+            "lon": r["lon"],
             "demand": demand
-        })
 
-    restaurants_df = pd.DataFrame(restaurants)
+            })
 
-    dishes_df = pd.DataFrame(columns=["dish", "mentions"])
+            all_text += page_text
+
+        except Exception as e:
+
+            print("Scraper error:",e)
+
+    restaurants_df = pd.DataFrame(restaurants_data)
+
+    # --------------------------------------------------
+    # DISH MENTIONS
+    # --------------------------------------------------
+
+    dish_counts = {}
+
+    text = all_text.lower()
+
+    for dish in dish_keywords:
+
+        dish_counts[dish] = text.count(dish)
+
+    dishes_df = pd.DataFrame([
+    {"dish":k,"mentions":v}
+    for k,v in dish_counts.items()
+    ])
 
     return {
-        "restaurants": restaurants_df,
-        "dishes": dishes_df
+
+    "restaurants": restaurants_df,
+    "dishes": dishes_df
+
     }
