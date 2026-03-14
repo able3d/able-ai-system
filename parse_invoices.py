@@ -2,9 +2,6 @@ import os
 import re
 import pdfplumber
 import shutil
-import pytesseract
-import cv2
-from PIL import Image
 from sqlalchemy import create_engine, text
 
 # ----------------------------------------------------
@@ -82,26 +79,9 @@ def clean_name(name):
     name = name.lower().strip()
 
     name = re.sub(r"[^a-z\s]", "", name)
-
     name = re.sub(r"\s+", " ", name)
 
     return INGREDIENT_MAP.get(name, name)
-
-# ----------------------------------------------------
-# OCR IMAGE INVOICES
-# ----------------------------------------------------
-
-def extract_text_from_image(path):
-
-    img = cv2.imread(path)
-
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    gray = cv2.threshold(gray,150,255,cv2.THRESH_BINARY)[1]
-
-    text = pytesseract.image_to_string(gray)
-
-    return text
 
 # ----------------------------------------------------
 # EXTRACT PDF CONTENT
@@ -115,15 +95,12 @@ def extract_pdf_content(path):
 
         for page in pdf.pages:
 
-            # table extraction
+            # extract tables
             tables = page.extract_tables()
 
             if tables:
-
                 for table in tables:
-
                     for row in table:
-
                         if not row:
                             continue
 
@@ -133,7 +110,7 @@ def extract_pdf_content(path):
 
                         text_content += row_text + "\n"
 
-            # text extraction
+            # extract normal text
             text = page.extract_text()
 
             if text:
@@ -215,7 +192,6 @@ def insert_purchase(item):
 
         ingredient_id = row[0]
 
-        # record purchase
         conn.execute(text("""
         INSERT INTO purchases
         (ingredient_name, quantity, unit, price, purchase_date)
@@ -223,7 +199,6 @@ def insert_purchase(item):
         (:name, :quantity, 'unit', :price, CURRENT_DATE)
         """), item)
 
-        # update inventory
         conn.execute(text("""
         INSERT INTO inventory (ingredient_id, quantity)
         VALUES (:ingredient_id, :quantity)
@@ -258,25 +233,17 @@ def process_all_invoices():
 
             print("Processing invoice:", file)
 
-            text_content = ""
-
-            if file.lower().endswith(".pdf"):
-
-                text_content = extract_pdf_content(path)
-
-            elif file.lower().endswith((".png",".jpg",".jpeg")):
-
-                text_content = extract_text_from_image(path)
-
-            else:
+            if not file.lower().endswith(".pdf"):
+                print("Skipping non-PDF:", file)
                 continue
+
+            text_content = extract_pdf_content(path)
 
             items = extract_items(text_content)
 
             print("Items detected:", items)
 
             for item in items:
-
                 insert_purchase(item)
 
             shutil.move(
@@ -291,10 +258,6 @@ def process_all_invoices():
             print("Error processing invoice:", file)
             print(e)
 
-
-# ----------------------------------------------------
-# RUN
-# ----------------------------------------------------
 
 if __name__ == "__main__":
 
