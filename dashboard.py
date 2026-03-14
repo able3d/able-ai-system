@@ -88,6 +88,39 @@ if not DATABASE_URL:
     st.stop()
 
 engine=create_engine(DATABASE_URL)
+# --------
+# button 
+# ------
+# -------------------------------------------------
+# DATA PIPELINE CONTROLS
+# -------------------------------------------------
+
+st.markdown("## ⚙️ Data Pipeline")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    if st.button("▶ Run Pipeline", use_container_width=True):
+
+        with st.spinner("Processing receipts and invoices..."):
+            run_pipeline.run_pipeline()
+
+        st.success("Pipeline completed!")
+
+        st.cache_data.clear()
+        st.rerun()
+
+with col2:
+    if st.button("🔄 Refresh Dashboard", use_container_width=True):
+
+        st.cache_data.clear()
+        st.rerun()
+
+with col3:
+    if st.button("🧹 Clear Cache", use_container_width=True):
+
+        st.cache_data.clear()
+        st.success("Cache cleared")
 
 # -------------------------------------------------
 # DATA LOADERS
