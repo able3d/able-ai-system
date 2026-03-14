@@ -33,7 +33,6 @@ def calculate_demand(reviews):
         for dish in dish_keywords:
 
             if dish in text:
-
                 score += 1
 
     return score
@@ -57,11 +56,12 @@ def extract_dishes(reviews):
 
                 dish_count[dish] = dish_count.get(dish, 0) + 1
 
-    dish_df = pd.DataFrame(
+    if not dish_count:
+        return pd.DataFrame(columns=["dish", "mentions"])
+
+    return pd.DataFrame(
         [{"dish": k, "mentions": v} for k, v in dish_count.items()]
     )
-
-    return dish_df
 
 
 # --------------------------------------------------
@@ -77,20 +77,38 @@ def scrape_google_reviews():
 
         browser = p.chromium.launch(
             headless=True,
-            args=["--disable-blink-features=AutomationControlled"]
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-blink-features=AutomationControlled"
+            ]
         )
 
         page = browser.new_page()
 
+        print("Opening Google Maps...")
+
         page.goto(
-            "https://www.google.com/maps/search/ethiopian+restaurant+new+york/"
+            "https://www.google.com/maps/search/ethiopian+restaurant+new+york/",
+            timeout=60000
         )
 
         page.wait_for_timeout(5000)
 
+        # --------------------------------------------------
+        # Scroll to load restaurants
+        # --------------------------------------------------
+
+        for _ in range(3):
+
+            page.mouse.wheel(0, 5000)
+            page.wait_for_timeout(2000)
+
         cards = page.locator("div.Nv2PK")
 
         count = min(cards.count(), 3)
+
+        print("Restaurants detected:", count)
 
         for i in range(count):
 
@@ -114,9 +132,11 @@ def scrape_google_reviews():
                     lat = float(coords[0])
                     lon = float(coords[1])
 
+                print("Scraping:", name)
+
                 card.click()
 
-                page.wait_for_timeout(3000)
+                page.wait_for_timeout(4000)
 
                 reviews = []
 
@@ -126,9 +146,14 @@ def scrape_google_reviews():
 
                 for j in range(review_count):
 
-                    text = review_elements.nth(j).inner_text()
+                    try:
 
-                    reviews.append(text)
+                        text = review_elements.nth(j).inner_text()
+
+                        reviews.append(text)
+
+                    except:
+                        pass
 
                 demand_score = calculate_demand(reviews)
 
