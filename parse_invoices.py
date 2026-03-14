@@ -2,6 +2,9 @@ import os
 import re
 import pdfplumber
 import shutil
+import pytesseract
+import cv2
+from PIL import Image
 from sqlalchemy import create_engine, text
 
 # ----------------------------------------------------
@@ -71,7 +74,75 @@ INGREDIENT_MAP = {
 }
 
 # ----------------------------------------------------
-# EXTRACT ITEMS
+# CLEAN INGREDIENT NAME
+# ----------------------------------------------------
+
+def clean_name(name):
+
+    name = name.lower().strip()
+
+    name = re.sub(r"[^a-z\s]", "", name)
+
+    name = re.sub(r"\s+", " ", name)
+
+    return INGREDIENT_MAP.get(name, name)
+
+# ----------------------------------------------------
+# OCR IMAGE INVOICES
+# ----------------------------------------------------
+
+def extract_text_from_image(path):
+
+    img = cv2.imread(path)
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    gray = cv2.threshold(gray,150,255,cv2.THRESH_BINARY)[1]
+
+    text = pytesseract.image_to_string(gray)
+
+    return text
+
+# ----------------------------------------------------
+# EXTRACT PDF CONTENT
+# ----------------------------------------------------
+
+def extract_pdf_content(path):
+
+    text_content = ""
+
+    with pdfplumber.open(path) as pdf:
+
+        for page in pdf.pages:
+
+            # table extraction
+            tables = page.extract_tables()
+
+            if tables:
+
+                for table in tables:
+
+                    for row in table:
+
+                        if not row:
+                            continue
+
+                        row_text = " ".join(
+                            str(c) for c in row if c
+                        )
+
+                        text_content += row_text + "\n"
+
+            # text extraction
+            text = page.extract_text()
+
+            if text:
+                text_content += text + "\n"
+
+    return text_content
+
+# ----------------------------------------------------
+# PARSE ITEMS
 # ----------------------------------------------------
 
 def extract_items(text):
@@ -80,22 +151,33 @@ def extract_items(text):
 
     lines = text.split("\n")
 
-    pattern = re.compile(
-        r"([A-Za-z\s]+)\s+(\d+)\s*\$?(\d+\.?\d*)"
-    )
-
     for line in lines:
 
-        match = pattern.search(line)
+        line = line.strip()
+
+        if not line:
+            continue
+
+        lower = line.lower()
+
+        if any(x in lower for x in [
+            "subtotal","tax","total",
+            "balance","invoice","date",
+            "amount","payment","bill"
+        ]):
+            continue
+
+        match = re.search(
+            r"([A-Za-z\s]+)\s+(\d+)\s*\$?(\d+\.?\d*)",
+            line
+        )
 
         if not match:
             continue
 
-        name = match.group(1).strip().lower()
+        name = clean_name(match.group(1))
         quantity = int(match.group(2))
         price = float(match.group(3))
-
-        name = INGREDIENT_MAP.get(name, name)
 
         items.append({
             "name": name,
@@ -106,30 +188,34 @@ def extract_items(text):
     return items
 
 # ----------------------------------------------------
-# INSERT PURCHASE
+# INSERT PURCHASE + UPDATE INVENTORY
 # ----------------------------------------------------
 
 def insert_purchase(item):
 
     with engine.begin() as conn:
 
-        # ensure ingredient exists
         conn.execute(text("""
         INSERT INTO ingredients (ingredient_name, unit)
         VALUES (:name, 'unit')
         ON CONFLICT (ingredient_name) DO NOTHING
         """), {"name": item["name"]})
 
-        # get ingredient id
         result = conn.execute(text("""
         SELECT ingredient_id
         FROM ingredients
         WHERE ingredient_name = :name
         """), {"name": item["name"]})
 
-        ingredient_id = result.fetchone()[0]
+        row = result.fetchone()
 
-        # insert purchase
+        if not row:
+            print("Ingredient not found:", item["name"])
+            return
+
+        ingredient_id = row[0]
+
+        # record purchase
         conn.execute(text("""
         INSERT INTO purchases
         (ingredient_name, quantity, unit, price, purchase_date)
@@ -162,54 +248,39 @@ def process_all_invoices():
 
     if not files:
         print("No invoices found")
+        return
 
     for file in files:
 
-        if not file.lower().endswith(".pdf"):
-            continue
-
-        file_path = os.path.join(INVOICE_FOLDER, file)
-
-        print("Reading invoice:", file)
+        path = os.path.join(INVOICE_FOLDER, file)
 
         try:
 
+            print("Processing invoice:", file)
+
             text_content = ""
 
-            with pdfplumber.open(file_path) as pdf:
+            if file.lower().endswith(".pdf"):
 
-                for page in pdf.pages:
+                text_content = extract_pdf_content(path)
 
-                    text = page.extract_text()
+            elif file.lower().endswith((".png",".jpg",".jpeg")):
 
-                    if text:
-                        text_content += text + "\n"
+                text_content = extract_text_from_image(path)
 
-                    tables = page.extract_tables()
-
-                    for table in tables:
-
-                        for row in table:
-
-                            if row:
-                                row_text = " ".join(
-                                    str(cell) for cell in row if cell
-                                )
-
-                                text_content += row_text + "\n"
+            else:
+                continue
 
             items = extract_items(text_content)
 
-            print("Items found:", len(items))
+            print("Items detected:", items)
 
             for item in items:
 
                 insert_purchase(item)
 
-                print("Inserted purchase:", item["name"])
-
             shutil.move(
-                file_path,
+                path,
                 os.path.join(PROCESSED_FOLDER, file)
             )
 
@@ -217,12 +288,12 @@ def process_all_invoices():
 
         except Exception as e:
 
-            print("Error processing", file)
+            print("Error processing invoice:", file)
             print(e)
 
 
 # ----------------------------------------------------
-# RUN SCRIPT
+# RUN
 # ----------------------------------------------------
 
 if __name__ == "__main__":
