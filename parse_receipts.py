@@ -2,9 +2,6 @@ import os
 import pdfplumber
 import shutil
 import re
-import pytesseract
-from PIL import Image
-import cv2
 from sqlalchemy import create_engine, text
 
 # --------------------------------------------------
@@ -37,27 +34,9 @@ def clean_item_name(name):
     name = name.strip()
 
     name = re.sub(r"[^a-zA-Z0-9\s]", "", name)
-
     name = re.sub(r"\s+", " ", name)
 
     return name.title()
-
-# --------------------------------------------------
-# OCR IMAGE RECEIPTS
-# --------------------------------------------------
-
-def extract_text_from_image(image_path):
-
-    img = cv2.imread(image_path)
-
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    # Improve OCR accuracy
-    gray = cv2.threshold(gray,150,255,cv2.THRESH_BINARY)[1]
-
-    text = pytesseract.image_to_string(gray)
-
-    return text
 
 # --------------------------------------------------
 # PDF EXTRACTION
@@ -65,14 +44,13 @@ def extract_text_from_image(image_path):
 
 def extract_pdf_content(file_path):
 
-    text_content=""
+    text_content = ""
 
     with pdfplumber.open(file_path) as pdf:
 
         for page in pdf.pages:
 
-            # Table extraction
-            tables=page.extract_tables()
+            tables = page.extract_tables()
 
             if tables:
 
@@ -83,15 +61,14 @@ def extract_pdf_content(file_path):
                         if not row:
                             continue
 
-                        row_text=" ".join(str(c) for c in row if c)
+                        row_text = " ".join(str(c) for c in row if c)
 
-                        text_content+=row_text+"\n"
+                        text_content += row_text + "\n"
 
-            # Text extraction
-            text=page.extract_text()
+            text = page.extract_text()
 
             if text:
-                text_content+=text+"\n"
+                text_content += text + "\n"
 
     return text_content
 
@@ -101,53 +78,54 @@ def extract_pdf_content(file_path):
 
 def extract_items(text):
 
-    items=[]
+    items = []
 
-    lines=text.split("\n")
+    lines = text.split("\n")
 
     for line in lines:
 
-        line=line.strip()
+        line = line.strip()
 
         if not line:
             continue
 
-        lower=line.lower()
+        lower = line.lower()
 
         if any(x in lower for x in [
-        "subtotal","tax","total","tip","change",
-        "payment","visa","thank","balance"]):
+            "subtotal","tax","total","tip",
+            "change","payment","visa","thank","balance"
+        ]):
             continue
 
         # Pattern: 2 Doro Wat 15.99
-        match=re.search(r"(\d+)\s+([A-Za-z\s]+?)\s+\$?(\d+\.\d{2})",line)
+        match = re.search(r"(\d+)\s+([A-Za-z\s]+?)\s+\$?(\d+\.\d{2})", line)
 
         if match:
 
-            quantity=int(match.group(1))
-            name=clean_item_name(match.group(2))
-            price=float(match.group(3))
+            quantity = int(match.group(1))
+            name = clean_item_name(match.group(2))
+            price = float(match.group(3))
 
             items.append({
-            "name":name,
-            "quantity":quantity,
-            "price":price
+                "name": name,
+                "quantity": quantity,
+                "price": price
             })
 
             continue
 
         # Pattern: Doro Wat 15.99
-        match=re.search(r"([A-Za-z\s]+?)\s+\$?(\d+\.\d{2})",line)
+        match = re.search(r"([A-Za-z\s]+?)\s+\$?(\d+\.\d{2})", line)
 
         if match:
 
-            name=clean_item_name(match.group(1))
-            price=float(match.group(2))
+            name = clean_item_name(match.group(1))
+            price = float(match.group(2))
 
             items.append({
-            "name":name,
-            "quantity":1,
-            "price":price
+                "name": name,
+                "quantity": 1,
+                "price": price
             })
 
     return items
@@ -164,36 +142,36 @@ def upsert_sale(item):
         INSERT INTO menu_items (item_name)
         VALUES (:name)
         ON CONFLICT (item_name) DO NOTHING
-        """),{"name":item["name"]})
+        """), {"name": item["name"]})
 
-        result=conn.execute(text("""
+        result = conn.execute(text("""
         SELECT item_id
         FROM menu_items
-        WHERE LOWER(item_name)=LOWER(:name)
-        """),{"name":item["name"]})
+        WHERE LOWER(item_name) = LOWER(:name)
+        """), {"name": item["name"]})
 
-        row=result.fetchone()
+        row = result.fetchone()
 
         if not row:
-            print("Menu item not found:",item["name"])
+            print("Menu item not found:", item["name"])
             return
 
-        item_id=row[0]
+        item_id = row[0]
 
-        orders=item["quantity"]
-        revenue=item["quantity"]*item["price"]
+        orders = item["quantity"]
+        revenue = item["quantity"] * item["price"]
 
         conn.execute(text("""
         INSERT INTO menu_sales (item_id,orders,revenue)
         VALUES (:item_id,:orders,:revenue)
         ON CONFLICT (item_id)
         DO UPDATE SET
-        orders=menu_sales.orders+EXCLUDED.orders,
-        revenue=menu_sales.revenue+EXCLUDED.revenue
-        """),{
-        "item_id":item_id,
-        "orders":orders,
-        "revenue":revenue
+        orders = menu_sales.orders + EXCLUDED.orders,
+        revenue = menu_sales.revenue + EXCLUDED.revenue
+        """), {
+            "item_id": item_id,
+            "orders": orders,
+            "revenue": revenue
         })
 
 # --------------------------------------------------
@@ -204,7 +182,7 @@ def process_all_receipts():
 
     print("Processing receipts...")
 
-    files=os.listdir(RECEIPT_FOLDER)
+    files = os.listdir(RECEIPT_FOLDER)
 
     if not files:
         print("No receipts found")
@@ -212,41 +190,38 @@ def process_all_receipts():
 
     for file in files:
 
-        file_path=os.path.join(RECEIPT_FOLDER,file)
+        file_path = os.path.join(RECEIPT_FOLDER, file)
 
         try:
 
-            print("Processing:",file)
+            print("Processing:", file)
 
-            text_content=""
-
-            if file.lower().endswith(".pdf"):
-
-                text_content=extract_pdf_content(file_path)
-
-            elif file.lower().endswith((".png",".jpg",".jpeg")):
-
-                text_content=extract_text_from_image(file_path)
-
-            else:
+            if not file.lower().endswith(".pdf"):
+                print("Skipping non-PDF:", file)
                 continue
 
-            items=extract_items(text_content)
+            text_content = extract_pdf_content(file_path)
 
-            print("Items detected:",items)
+            items = extract_items(text_content)
+
+            print("Items detected:", items)
 
             for item in items:
-
                 upsert_sale(item)
 
             shutil.move(
-            file_path,
-            os.path.join(PROCESSED_FOLDER,file)
+                file_path,
+                os.path.join(PROCESSED_FOLDER, file)
             )
 
-            print("Receipt processed:",file)
+            print("Receipt processed:", file)
 
         except Exception as e:
 
-            print("Error:",file)
+            print("Error:", file)
             print(e)
+
+
+if __name__ == "__main__":
+
+    process_all_receipts()
