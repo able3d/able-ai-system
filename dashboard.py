@@ -109,6 +109,44 @@ with col3:
         st.success("Cache cleared")
 
 # -------------------------------------------------
+# DATABASE DEBUG PANEL
+# -------------------------------------------------
+
+st.markdown("## 🧪 Database Debug")
+
+d1,d2,d3,d4 = st.columns(4)
+
+with d1:
+    if st.button("Show menu_sales"):
+
+        df = pd.read_sql("SELECT * FROM menu_sales", engine)
+        st.write("menu_sales table")
+        st.dataframe(df)
+
+with d2:
+    if st.button("Show purchases"):
+
+        df = pd.read_sql("SELECT * FROM purchases", engine)
+        st.write("purchases table")
+        st.dataframe(df)
+
+with d3:
+    if st.button("Show menu_items"):
+
+        df = pd.read_sql("SELECT * FROM menu_items", engine)
+        st.write("menu_items table")
+        st.dataframe(df)
+
+with d4:
+    if st.button("Check receipt folders"):
+
+        receipts = os.listdir("data/receipts") if os.path.exists("data/receipts") else []
+        processed = os.listdir("data/processed_receipts") if os.path.exists("data/processed_receipts") else []
+
+        st.write("Receipts folder:", receipts)
+        st.write("Processed receipts:", processed)
+
+# -------------------------------------------------
 # DATA LOADERS
 # -------------------------------------------------
 
