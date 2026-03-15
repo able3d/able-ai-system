@@ -31,13 +31,29 @@ engine = create_engine(DATABASE_URL)
 
 def clean_item_name(name):
 
-    name = name.strip()
+    name = name.lower().strip()
 
-    name = re.sub(r"[^a-zA-Z0-9\s]", "", name)
+    name = re.sub(r"[^a-z0-9\s]", "", name)
 
     name = re.sub(r"\s+", " ", name)
 
-    return name.lower()
+    # normalize common dish names
+    dish_map = {
+        "doro wat": "doro wat",
+        "doro": "doro wat",
+        "kitfo": "kitfo",
+        "shiro": "shiro",
+        "vegan combo": "vegan combo",
+        "vegetarian combo": "vegan combo",
+        "injera": "injera",
+        "tibs": "tibs"
+    }
+
+    for key in dish_map:
+        if key in name:
+            return dish_map[key]
+
+    return name
 
 # --------------------------------------------------
 # PDF EXTRACTION
@@ -54,9 +70,7 @@ def extract_pdf_content(file_path):
             tables = page.extract_tables()
 
             if tables:
-
                 for table in tables:
-
                     for row in table:
 
                         if not row:
@@ -90,9 +104,11 @@ def extract_items(text):
         if not line:
             continue
 
+        print("Checking line:", line)
+
         lower = line.lower()
 
-        # skip receipt summary lines
+        # skip summary lines
         if any(x in lower for x in [
             "subtotal","tax","total","tip",
             "change","payment","visa","thank",
@@ -109,6 +125,8 @@ def extract_items(text):
             name = clean_item_name(match.group(2))
             price = float(match.group(3))
 
+            print("MATCH:", name, price)
+
             items.append({
                 "name": name,
                 "quantity": quantity,
@@ -118,12 +136,14 @@ def extract_items(text):
             continue
 
         # Pattern: Doro Wat 15.99
-        match = re.search(r"([A-Za-z\s]+?)\s+\$?(\d+\.\d{2})", line)
+        match = re.search(r"([A-Za-z\s]+?)\s+\$?(\d+\.\d{2})$", line)
 
         if match:
 
             name = clean_item_name(match.group(1))
             price = float(match.group(2))
+
+            print("MATCH:", name, price)
 
             items.append({
                 "name": name,
@@ -144,7 +164,7 @@ def upsert_sale(item):
         # ensure menu item exists
         conn.execute(text("""
         INSERT INTO menu_items (item_name)
-        VALUES (LOWER(:name))
+        VALUES (:name)
         ON CONFLICT (item_name) DO NOTHING
         """), {"name": item["name"]})
 
