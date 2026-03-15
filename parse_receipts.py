@@ -33,11 +33,13 @@ def clean_item_name(name):
 
     name = name.lower().strip()
 
+    # remove special characters
     name = re.sub(r"[^a-z0-9\s]", "", name)
 
+    # remove extra spaces
     name = re.sub(r"\s+", " ", name)
 
-    # normalize common dish names
+    # normalize common dishes
     dish_map = {
         "doro wat": "doro wat",
         "doro": "doro wat",
@@ -45,6 +47,7 @@ def clean_item_name(name):
         "shiro": "shiro",
         "vegan combo": "vegan combo",
         "vegetarian combo": "vegan combo",
+        "veg combo": "vegan combo",
         "injera": "injera",
         "tibs": "tibs"
     }
@@ -53,7 +56,7 @@ def clean_item_name(name):
         if key in name:
             return dish_map[key]
 
-    return name
+    return name.strip()
 
 # --------------------------------------------------
 # PDF EXTRACTION
@@ -67,6 +70,7 @@ def extract_pdf_content(file_path):
 
         for page in pdf.pages:
 
+            # extract tables
             tables = page.extract_tables()
 
             if tables:
@@ -80,6 +84,7 @@ def extract_pdf_content(file_path):
 
                         text_content += row_text + "\n"
 
+            # extract normal text
             text = page.extract_text()
 
             if text:
@@ -88,7 +93,7 @@ def extract_pdf_content(file_path):
     return text_content
 
 # --------------------------------------------------
-# PARSE ITEMS
+# PARSE ITEMS FROM RECEIPT TEXT
 # --------------------------------------------------
 
 def extract_items(text):
@@ -104,8 +109,6 @@ def extract_items(text):
         if not line:
             continue
 
-        print("Checking line:", line)
-
         lower = line.lower()
 
         # skip summary lines
@@ -116,8 +119,10 @@ def extract_items(text):
         ]):
             continue
 
-        # Pattern: 2 Doro Wat 15.99
-        match = re.search(r"(\d+)\s+([A-Za-z\s]+?)\s+\$?(\d+\.\d{2})", line)
+        print("Checking line:", line)
+
+        # pattern: 2 Doro Wat 15.99
+        match = re.search(r"(\d+)\s+([A-Za-z\s]+?)[\.\s]*\$?(\d+\.\d{2})", line)
 
         if match:
 
@@ -125,7 +130,7 @@ def extract_items(text):
             name = clean_item_name(match.group(2))
             price = float(match.group(3))
 
-            print("MATCH:", name, price)
+            print("MATCH:", name, price, "qty:", quantity)
 
             items.append({
                 "name": name,
@@ -135,8 +140,8 @@ def extract_items(text):
 
             continue
 
-        # Pattern: Doro Wat 15.99
-        match = re.search(r"([A-Za-z\s]+?)\s+\$?(\d+\.\d{2})$", line)
+        # pattern: Doro Wat........15.99
+        match = re.search(r"([A-Za-z\s]+)[\.\s]*\$?(\d+\.\d{2})", line)
 
         if match:
 
@@ -172,7 +177,7 @@ def upsert_sale(item):
         result = conn.execute(text("""
         SELECT item_id
         FROM menu_items
-        WHERE TRIM(LOWER(item_name)) = TRIM(LOWER(:name))
+        WHERE LOWER(TRIM(item_name)) = LOWER(TRIM(:name))
         """), {"name": item["name"]})
 
         row = result.fetchone()
@@ -208,7 +213,7 @@ def upsert_sale(item):
 
 def process_all_receipts():
 
-    print("Processing receipts...")
+    print("\nProcessing receipts...\n")
 
     files = os.listdir(RECEIPT_FOLDER)
 
@@ -234,6 +239,9 @@ def process_all_receipts():
 
             print("Items detected:", items)
 
+            if not items:
+                print("No menu items detected in receipt")
+
             for item in items:
 
                 upsert_sale(item)
@@ -247,7 +255,7 @@ def process_all_receipts():
 
         except Exception as e:
 
-            print("Error:", file)
+            print("Error processing:", file)
             print(e)
 
 # --------------------------------------------------
