@@ -34,9 +34,10 @@ def clean_item_name(name):
     name = name.strip()
 
     name = re.sub(r"[^a-zA-Z0-9\s]", "", name)
+
     name = re.sub(r"\s+", " ", name)
 
-    return name.title()
+    return name.lower()
 
 # --------------------------------------------------
 # PDF EXTRACTION
@@ -91,9 +92,11 @@ def extract_items(text):
 
         lower = line.lower()
 
+        # skip receipt summary lines
         if any(x in lower for x in [
             "subtotal","tax","total","tip",
-            "change","payment","visa","thank","balance"
+            "change","payment","visa","thank",
+            "balance","cash","card"
         ]):
             continue
 
@@ -138,16 +141,18 @@ def upsert_sale(item):
 
     with engine.begin() as conn:
 
+        # ensure menu item exists
         conn.execute(text("""
         INSERT INTO menu_items (item_name)
-        VALUES (:name)
+        VALUES (LOWER(:name))
         ON CONFLICT (item_name) DO NOTHING
         """), {"name": item["name"]})
 
+        # get item id
         result = conn.execute(text("""
         SELECT item_id
         FROM menu_items
-        WHERE LOWER(item_name) = LOWER(:name)
+        WHERE TRIM(LOWER(item_name)) = TRIM(LOWER(:name))
         """), {"name": item["name"]})
 
         row = result.fetchone()
@@ -161,9 +166,12 @@ def upsert_sale(item):
         orders = item["quantity"]
         revenue = item["quantity"] * item["price"]
 
+        print("Updating:", item["name"], "Orders:", orders, "Revenue:", revenue)
+
         conn.execute(text("""
         INSERT INTO menu_sales (item_id,orders,revenue)
         VALUES (:item_id,:orders,:revenue)
+
         ON CONFLICT (item_id)
         DO UPDATE SET
         orders = menu_sales.orders + EXCLUDED.orders,
@@ -207,6 +215,7 @@ def process_all_receipts():
             print("Items detected:", items)
 
             for item in items:
+
                 upsert_sale(item)
 
             shutil.move(
@@ -221,6 +230,9 @@ def process_all_receipts():
             print("Error:", file)
             print(e)
 
+# --------------------------------------------------
+# RUN SCRIPT
+# --------------------------------------------------
 
 if __name__ == "__main__":
 
