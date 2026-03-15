@@ -34,6 +34,8 @@ engine = create_engine(DATABASE_URL)
 
 def init_db():
 
+    print("Initializing database tables...")
+
     with engine.begin() as conn:
 
         conn.execute(text("""
@@ -86,6 +88,8 @@ def init_db():
         )
         """))
 
+    print("Database ready\n")
+
 
 # --------------------------------------------------
 # GOOGLE DRIVE ETL
@@ -95,21 +99,31 @@ def run_drive_etl():
 
     print("\nRunning Google Drive ETL...\n")
 
+    # ---------------------------
+    # INVOICES
+    # ---------------------------
+
     if INVOICE_FOLDER_ID:
 
         print("Downloading invoices from Google Drive...")
 
         download_all_files(INVOICE_FOLDER_ID, INVOICE_FOLDER)
 
-        print("Invoices downloaded:", os.listdir(INVOICE_FOLDER))
+        files = os.listdir(INVOICE_FOLDER)
 
-        print("\nProcessing invoices...\n")
+        print("Invoices downloaded:", files)
 
-        process_all_invoices()
+        if files:
+            print("\nProcessing invoices...\n")
+            process_all_invoices()
 
     else:
 
         print("No invoice folder configured\n")
+
+    # ---------------------------
+    # RECEIPTS
+    # ---------------------------
 
     if RECEIPT_FOLDER_ID:
 
@@ -117,11 +131,13 @@ def run_drive_etl():
 
         download_all_files(RECEIPT_FOLDER_ID, RECEIPT_FOLDER)
 
-        print("Receipts downloaded:", os.listdir(RECEIPT_FOLDER))
+        files = os.listdir(RECEIPT_FOLDER)
 
-        print("\nProcessing receipts...\n")
+        print("Receipts downloaded:", files)
 
-        process_all_receipts()
+        if files:
+            print("\nProcessing receipts...\n")
+            process_all_receipts()
 
     else:
 
@@ -140,11 +156,14 @@ def run_competitor_etl():
 
         data = scrape_google_reviews()
 
-        restaurants = data.get("restaurants", [])
-        dishes = data.get("dishes", [])
+        restaurants = data.get("restaurants")
+        dishes = data.get("dishes")
 
-        print("Restaurants scraped:", len(restaurants))
-        print("Dish mentions scraped:", len(dishes))
+        if restaurants is not None:
+            print("Restaurants scraped:", len(restaurants))
+
+        if dishes is not None:
+            print("Dish mentions scraped:", len(dishes))
 
     except Exception as e:
 
@@ -159,24 +178,32 @@ def deduct_inventory():
 
     print("\nUpdating inventory usage from menu sales...\n")
 
-    with engine.begin() as conn:
+    try:
 
-        conn.execute(text("""
-        UPDATE inventory
-        SET quantity = GREATEST(quantity - usage.total_used, 0)
+        with engine.begin() as conn:
 
-        FROM (
-            SELECT
-                b.ingredient_id,
-                SUM(b.quantity * s.orders) AS total_used
-            FROM dish_bom b
-            JOIN menu_sales s
-            ON b.item_id = s.item_id
-            GROUP BY b.ingredient_id
-        ) usage
+            conn.execute(text("""
+            UPDATE inventory
+            SET quantity = GREATEST(quantity - usage.total_used, 0)
 
-        WHERE inventory.ingredient_id = usage.ingredient_id
-        """))
+            FROM (
+                SELECT
+                    b.ingredient_id,
+                    SUM(b.quantity * s.orders) AS total_used
+                FROM dish_bom b
+                JOIN menu_sales s
+                ON b.item_id = s.item_id
+                GROUP BY b.ingredient_id
+            ) usage
+
+            WHERE inventory.ingredient_id = usage.ingredient_id
+            """))
+
+        print("Inventory updated\n")
+
+    except Exception as e:
+
+        print("Inventory update failed:", e)
 
 
 # --------------------------------------------------
@@ -189,19 +216,19 @@ def run_pipeline():
     print("STARTING ABLE AI DATA PIPELINE")
     print("===================================\n")
 
+    # Step 1
     print("Step 1: Initializing database...\n")
     init_db()
 
+    # Step 2
     print("Step 2: Running Google Drive ETL...\n")
     run_drive_etl()
 
+    # Step 3
     print("Step 3: Scraping competitor reviews...\n")
+    run_competitor_etl()
 
-    try:
-        run_competitor_etl()
-    except Exception as e:
-        print("Competitor scraper failed:", e)
-
+    # Step 4
     print("Step 4: Updating inventory consumption...\n")
     deduct_inventory()
 
