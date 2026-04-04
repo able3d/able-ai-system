@@ -11,51 +11,69 @@ from google_reviews_scraper import scrape_google_reviews
 # -------------------------------------------------
 
 st.set_page_config(
-    page_title="Able AI Restaurant Intelligence",
+    page_title="Able AI",
     layout="wide"
 )
 
 # -------------------------------------------------
-# STYLE (IMPROVED UI)
+# MODERN UI STYLE
 # -------------------------------------------------
 
 st.markdown("""
 <style>
+
 header, footer, #MainMenu {visibility:hidden;}
 
 .block-container {
-    padding-top: 1rem;
+    padding-top: 1.5rem;
     max-width: 1200px;
 }
 
+/* METRIC CARDS */
 .metric-card {
-    background: linear-gradient(135deg,#1c1c1c,#2a2a2a);
-    border-radius: 16px;
-    padding: 20px;
-    border: 1px solid #333;
+    background: #1f1f1f;
+    border-radius: 14px;
+    padding: 18px;
+    text-align:center;
+    border: 1px solid #2c2c2c;
 }
 
+/* MENU CARD */
 .menu-card {
-    background:#1f1f1f;
-    border-radius:16px;
-    padding:15px;
-    border:1px solid #333;
+    background: #1f1f1f;
+    border-radius: 16px;
+    padding: 12px;
+    border: 1px solid #2c2c2c;
     text-align:center;
+    transition: 0.2s;
+}
+
+.menu-card:hover {
+    transform: scale(1.02);
+}
+
+/* BUTTON BAR */
+.button-bar button {
+    border-radius: 10px !important;
+}
+
+/* TITLE */
+h1, h2, h3 {
+    font-weight:600;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------
-# HERO (FIXED IMAGE CUT)
+# HERO (CLEAN + NOT CUT)
 # -------------------------------------------------
 
 st.image("images/vegan combo.PNG", use_column_width=True)
 
-st.markdown("""
-# 🍽 Able AI Restaurant Intelligence  
-AI-powered system for **inventory, revenue, and competitor intelligence**
-""")
+st.markdown("## 🍽 Able AI Restaurant Intelligence")
+
+st.caption("Simple AI system for revenue, inventory, and competitor insights")
 
 # -------------------------------------------------
 # DATABASE
@@ -70,28 +88,28 @@ if not DATABASE_URL:
 engine = create_engine(DATABASE_URL)
 
 # -------------------------------------------------
-# PIPELINE CONTROLS
+# ACTION BAR (CLEAN)
 # -------------------------------------------------
 
-st.markdown("## ⚙️ Data Pipeline")
+st.markdown("### ⚙️ Actions")
 
-c1,c2,c3 = st.columns(3)
+a1, a2, a3 = st.columns(3)
 
-with c1:
-    if st.button("▶ Run Pipeline"):
-        with st.spinner("Running pipeline..."):
+with a1:
+    if st.button("▶ Run Pipeline", use_container_width=True):
+        with st.spinner("Running..."):
             run_pipeline.run_pipeline()
-        st.success("Pipeline completed")
+        st.success("Done")
         st.cache_data.clear()
         st.rerun()
 
-with c2:
-    if st.button("🔄 Refresh"):
+with a2:
+    if st.button("🔄 Refresh", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
-with c3:
-    if st.button("🧹 Clear Cache"):
+with a3:
+    if st.button("🧹 Clear Cache", use_container_width=True):
         st.cache_data.clear()
         st.success("Cache cleared")
 
@@ -101,7 +119,7 @@ with c3:
 
 @st.cache_data(ttl=60)
 def load_menu():
-    query = """
+    return pd.read_sql("""
     SELECT m.item_name,
            COALESCE(SUM(s.orders),0) orders,
            COALESCE(SUM(s.revenue),0) revenue
@@ -110,19 +128,17 @@ def load_menu():
     ON m.item_id = s.item_id
     GROUP BY m.item_name
     ORDER BY revenue DESC
-    """
-    return pd.read_sql(query, engine)
+    """, engine)
 
 @st.cache_data(ttl=60)
 def load_inventory():
-    query = """
+    return pd.read_sql("""
     SELECT i.ingredient_name,
            GREATEST(inv.quantity,0) quantity
     FROM inventory inv
     JOIN ingredients i
     ON inv.ingredient_id = i.ingredient_id
-    """
-    return pd.read_sql(query, engine)
+    """, engine)
 
 @st.cache_data(ttl=60)
 def load_purchases():
@@ -155,16 +171,16 @@ menu_images = {
 # -------------------------------------------------
 
 tabs = st.tabs([
-"📊 Dashboard",
-"📦 Inventory",
-"🛒 Purchases",
-"🍽 Menu Sales",
-"🏆 Competition",
-"🧠 AI Insights"
+"Overview",
+"Inventory",
+"Purchases",
+"Menu",
+"Competition",
+"Insights"
 ])
 
 # =================================================
-# DASHBOARD
+# OVERVIEW
 # =================================================
 
 with tabs[0]:
@@ -183,12 +199,21 @@ with tabs[0]:
 
     c1,c2,c3,c4 = st.columns(4)
 
-    c1.metric("Revenue", f"${revenue:,.0f}")
-    c2.metric("Spend", f"${spend:,.0f}")
-    c3.metric("Profit", f"${profit:,.0f}")
-    c4.metric("Orders", int(orders))
+    with c1:
+        st.markdown('<div class="metric-card">💰<br><b>Revenue</b><br>$%s</div>' % f"{revenue:,.0f}", unsafe_allow_html=True)
 
-    fig = px.bar(menu, x="item_name", y="revenue", color="revenue")
+    with c2:
+        st.markdown('<div class="metric-card">📦<br><b>Spend</b><br>$%s</div>' % f"{spend:,.0f}", unsafe_allow_html=True)
+
+    with c3:
+        st.markdown('<div class="metric-card">📈<br><b>Profit</b><br>$%s</div>' % f"{profit:,.0f}", unsafe_allow_html=True)
+
+    with c4:
+        st.markdown('<div class="metric-card">🧾<br><b>Orders</b><br>%s</div>' % int(orders), unsafe_allow_html=True)
+
+    st.markdown("### Revenue by Dish")
+
+    fig = px.bar(menu, x="item_name", y="revenue")
     st.plotly_chart(fig, use_container_width=True)
 
 # =================================================
@@ -199,32 +224,26 @@ with tabs[1]:
 
     inventory = load_inventory()
 
+    st.markdown("### Inventory Levels")
+
     fig = px.bar(inventory, x="ingredient_name", y="quantity")
     st.plotly_chart(fig, use_container_width=True)
 
     low = inventory[inventory["quantity"] < 5]
 
     if not low.empty:
-        st.warning("⚠ Low Inventory")
+        st.warning("⚠ Low inventory items")
         st.dataframe(low)
 
 # =================================================
-# PURCHASES
-# =================================================
-
-with tabs[2]:
-
-    st.dataframe(load_purchases(), use_container_width=True)
-
-# =================================================
-# MENU SALES (IMPROVED UI + IMAGES)
+# MENU (CLEAN CARDS)
 # =================================================
 
 with tabs[3]:
 
     menu = load_menu()
 
-    st.markdown("## 🍽 Menu Performance")
+    st.markdown("### 🍽 Menu Performance")
 
     cols = st.columns(3)
 
@@ -240,85 +259,53 @@ with tabs[3]:
             if image and os.path.exists(image):
                 st.image(image, use_column_width=True)
 
-            st.markdown(f"### {row['item_name']}")
-            st.metric("Orders", int(row["orders"]))
-            st.metric("Revenue", f"${row['revenue']:,.0f}")
+            st.markdown(f"**{row['item_name']}**")
+            st.caption(f"{int(row['orders'])} orders")
+            st.markdown(f"**${row['revenue']:,.0f}**")
 
             st.markdown('</div>', unsafe_allow_html=True)
 
 # =================================================
-# COMPETITION (UPGRADED)
+# COMPETITION
 # =================================================
 
 with tabs[4]:
 
-    st.markdown("## 🏆 Competitor Intelligence")
+    st.markdown("### 🏆 Competitor Insights")
 
-    # BUTTONS INSIDE TAB
-    c1,c2 = st.columns(2)
-
-    with c1:
-        if st.button("▶ Run Scraper"):
-            scrape_google_reviews()
-            st.success("Scraper finished")
-            st.cache_data.clear()
-            st.rerun()
-
-    with c2:
-        if st.button("🔄 Refresh Data"):
-            st.cache_data.clear()
-            st.rerun()
+    if st.button("Run Scraper"):
+        scrape_google_reviews()
+        st.success("Updated")
+        st.cache_data.clear()
+        st.rerun()
 
     restaurants, dishes = load_competitors()
 
-    # MAP
     if not restaurants.empty:
+
+        top = restaurants.sort_values("Rating", ascending=False).iloc[0]
+
+        st.success(f"⭐ Top: {top['Restaurant']} ({top['Rating']})")
 
         fig = px.scatter_mapbox(
             restaurants,
             lat="lat",
             lon="lon",
             hover_name="Restaurant",
-            hover_data=["Rating","demand"],
-            color="Rating",
             zoom=12
         )
 
         fig.update_layout(mapbox_style="carto-darkmatter")
         st.plotly_chart(fig, use_container_width=True)
 
-        # TOP RESTAURANT
-        top_rest = restaurants.sort_values("Rating", ascending=False).head(1)
-
-        if not top_rest.empty:
-            st.success(f"⭐ Top Rated: {top_rest.iloc[0]['Restaurant']} ({top_rest.iloc[0]['Rating']})")
-
-    # TOP DISHES
-    if not dishes.empty:
-
-        st.markdown("### 🔥 Top Mentioned Dishes")
-
-        top_dishes = dishes.sort_values("mentions", ascending=False).head(5)
-
-        fig = px.bar(top_dishes, x="dish", y="mentions", color="mentions")
-        st.plotly_chart(fig, use_container_width=True)
-
 # =================================================
-# AI INSIGHTS
+# INSIGHTS
 # =================================================
 
 with tabs[5]:
 
     menu = load_menu()
-    inventory = load_inventory()
-
-    st.markdown("## 🧠 AI Insights")
 
     if not menu.empty:
         top = menu.iloc[0]
-        st.success(f"🔥 Top Dish: {top['item_name']} (${top['revenue']:,.0f})")
-
-    low = inventory[inventory["quantity"] < 5]
-
-    if not low.empty:
-        st.warning("⚠ Inventory Risk: " + ", ".join(low["ingredient_name"]))
+        st.success(f"🔥 Best dish: {top['item_name']} (${top['revenue']:,.0f})")
